@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>SPACE DRIFT v2</title>
+<title>SPACE DRIFT v2.2</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -187,7 +187,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
   <div class="hc">
     <div class="lorb"><span class="le" id="le">🚀</span></div>
     <div class="lt" id="lt" style="color:#fff">SPACE DRIFT</div>
-    <div class="lsub">PHYSICS PILOT · v2.1</div>
+    <div class="lsub">PHYSICS PILOT · v2.2</div>
     <div class="tr" id="tr"></div>
     <div class="brow">
       <div class="bri"><div class="brv" id="hbest">0</div><div class="brl">Best</div></div>
@@ -197,6 +197,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <button class="btnp" id="btnp" onclick="startGame()">LAUNCH</button>
     <button class="btns" onclick="showScr('show')">HOW TO PLAY</button>
     <button class="btns" onclick="enableGyro()">📱 ENABLE TILT</button>
+    <button class="btns" id="ads-btn" onclick="toggleAds()">ADS: ON</button>
+    <button class="btns" onclick="goLauncher()">⬅ LAUNCHER</button>
   </div>
 </div>
 
@@ -227,7 +229,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <div class="goit"><div class="gov" id="gogem">0</div><div class="gol">Gems</div></div>
   </div>
   <div class="rbtn" onclick="watchRevive()">
-    <div style="font-family:'Exo 2',sans-serif;font-size:13px;font-weight:700;color:#fff">📺 WATCH AD → REVIVE</div>
+    <div style="font-family:'Exo 2',sans-serif;font-size:13px;font-weight:700;color:#fff" id="revive-title">📺 WATCH AD → REVIVE</div>
     <div style="font-size:9px;color:rgba(255,255,255,.28);margin-top:2px">Full fuel + 3 shields</div>
   </div>
   <button class="btnp" onclick="startGame()" style="margin-bottom:8px">RETRY</button>
@@ -362,6 +364,7 @@ let G = null, gyroX = 0, btnX = 0, mouseX = .5;
 let clicking = false, thrusting = false, K = {};
 let raf = 0, overlayRaf = 0, adCb = null, adTmr = 0, gamesN = 0;
 let homeOn = false, homeTick = 0;
+let adsOff = localStorage.getItem('sd_ads_off') === '1';
 
 function w2s(wy) { return H - (wy - G.cam); }
 
@@ -420,6 +423,20 @@ function goHome() {
 function goLauncher() { window.location.href = 'index.html'; }
 let _tt;
 function toast(msg, d=2000) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('on'),d); }
+function applyAdsPref() {
+  const adb = document.getElementById('adb');
+  const adsBtn = document.getElementById('ads-btn');
+  const reviveTitle = document.getElementById('revive-title');
+  if (adb) adb.style.display = adsOff ? 'none' : 'flex';
+  if (adsBtn) adsBtn.textContent = adsOff ? 'ADS: OFF' : 'ADS: ON';
+  if (reviveTitle) reviveTitle.textContent = adsOff ? '💖 REVIVE INSTANT' : '📺 WATCH AD → REVIVE';
+}
+function toggleAds() {
+  adsOff = !adsOff;
+  localStorage.setItem('sd_ads_off', adsOff ? '1' : '0');
+  applyAdsPref();
+  toast(adsOff ? 'Ad mode OFF' : 'Ad mode ON', 1200);
+}
 
 // ── STATS ────────────────────────────────────
 function loadStats() {
@@ -505,7 +522,11 @@ function mkAst(wy, danger) {
 }
 function mkFuel(wy) { return {t:'fuel',wy,alive:1,x:W*.12+Math.random()*W*.76,r:13,p:Math.random()*6}; }
 function mkGem(wy,bonus) { return {t:'gem',wy,alive:1,bonus,x:W*.08+Math.random()*W*.84,r:bonus?13:9,p:Math.random()*6}; }
-function mkStagePad(wy) { return {t:'stagepad',wy,x:W/2,w:Math.min(200,W*.45),h:12}; }
+function mkStagePad(wy) {
+  const margin = 32;
+  const w = Math.min(200, W*.45);
+  return {t:'stagepad',wy,x:margin+w/2+Math.random()*(W-w-margin*2),w,h:12,alive:1};
+}
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
 function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random()}; }
 
@@ -521,7 +542,6 @@ function genWorld(upTo) {
     while (G.nextGateAlt <= alt+CFG.GSPC) {
       const ga=G.nextGateAlt, isStg=(G.gi%3===2), sNum=Math.floor(G.gi/3)+1, gNum=G.gi%3+1;
       G.objs.push(mkGate(ga,isStg,gNum,sNum));
-      if (isStg) G.objs.push(mkStagePad(ga-90));
       G.gi++; G.nextGateAlt += CFG.GSPC;
     }
     alt += 130 + Math.random()*110; G.lastGen = alt;
@@ -547,7 +567,7 @@ function startGame() {
     score:0, maxAlt:0, stgN:1, tick:0,
     gi:0, nextGateAlt:CFG.GSPC, lastGen:0,
     over:false, landed:false, stgTrans:false, awaitChoice:false, refueling:false,
-    landOnPad:false, firstThrust:false, gravOn:false, graceTick:0, normGates:0,
+    landOnPad:true, firstThrust:false, gravOn:false, graceTick:0, normGates:0,
     padWY: shipWY - SR - 2,
   };
   G.objs.push({t:'ground', wy:0});
@@ -643,9 +663,9 @@ function update() {
         o.alive=0; popTxt(o.x,sy,(o.bonus?'💰 ':'💎 ')+'+'+pts, o.bonus?T.bc:T.gc); sfx('gem');
       }
     }
-    else if (o.t==='stagepad' && G.landOnPad) {
+    else if (o.t==='stagepad' && o.alive) {
       const ssy=w2s(S.wy), onX=S.x>o.x-o.w/2-R*.4&&S.x<o.x+o.w/2+R*.4, onY=ssy>sy-R*1.2&&ssy<sy+o.h+R;
-      if (onX&&onY&&S.vy<=0) { if(Math.abs(S.vy)<CFG.LV&&Math.abs(S.vx)<1.5){S.wy=o.wy+R*.4;S.vx=0;S.vy=0;startRefuel();return;}else{doCrash();return;} }
+      if (onX&&onY&&S.vy<=0) { if(Math.abs(S.vy)<CFG.LV&&Math.abs(S.vx)<1.5){S.wy=o.wy+R*.4;S.vx=0;S.vy=0;o.alive=0;startRefuel();return;}else{doCrash();return;} }
     }
     else if (o.t==='gate' && !o.passed) {
       const ssy=w2s(S.wy);
@@ -654,14 +674,15 @@ function update() {
         if (o.isStage) {
           boom(W/2,sy,T.ha); boom(W/3,sy,T.ha); boom(2*W/3,sy,T.ha);
           sfx('stage'); G.stgN=o.sNum+1; G.normGates=0; G.stgTrans=true;
+          G.objs.push(mkStagePad(o.wy-90));
           startOverlayDraw();
           document.getElementById('sanum').textContent = o.sNum+1;
           document.getElementById('sa-ov').classList.add('on');
           setTimeout(() => {
             document.getElementById('sa-ov').classList.remove('on');
-            G.stgTrans=false; G.awaitChoice=true;
-            document.getElementById('sct').textContent='STAGE '+o.sNum+' COMPLETE!';
-            document.getElementById('sc-ov').classList.add('on');
+            G.stgTrans=false; G.awaitChoice=false;
+            toast('Stage gate clear. Land on random pad to refuel.', 1800);
+            loop();
           }, 1600);
           return;
         } else {
@@ -688,10 +709,10 @@ function update() {
 }
 
 // ── STAGE FLOW ───────────────────────────────
-function choiceFly() { document.getElementById('sc-ov').classList.remove('on'); stopOverlayDraw(); G.awaitChoice=false; G.landOnPad=false; G.score+=200*G.stgN; loop(); }
-function choiceLand() { document.getElementById('sc-ov').classList.remove('on'); G.awaitChoice=false; G.landOnPad=true; toast('🛬 Land on the green pad!',2500); loop(); }
+function choiceFly() {}
+function choiceLand() {}
 function startRefuel() {
-  stopOverlayDraw(); G.refueling=true; G.landOnPad=false; sfx('land');
+  stopOverlayDraw(); G.refueling=true; sfx('land');
   document.getElementById('rf-ov').classList.add('on');
   document.getElementById('rfbtn').classList.remove('on');
   const rff=document.getElementById('rffill'), rfp=document.getElementById('rfpct');
@@ -785,7 +806,7 @@ function drawObj(o, sy) {
       ctx.beginPath();ctx.arc(px+o.w-6,sy-o.h/2,4,0,Math.PI*2);ctx.fill();
       ctx.globalAlpha=1; ctx.fillStyle='rgba(255,255,255,.75)';
       ctx.font='bold 11px "Orbitron",monospace'; ctx.textAlign='center';
-      ctx.fillText(G.landOnPad?'▼ LAND HERE':'STAGE PAD', o.x, sy-o.h-10);
+      ctx.fillText('▼ LAND HERE', o.x, sy-o.h-10);
       break;
     }
     case 'gate': {
@@ -923,9 +944,9 @@ function endGame(landed) {
   document.getElementById('gogem').textContent=G.ship.gems;
   document.getElementById('nb').classList.toggle('on',isNew);
   document.getElementById('ui').classList.remove('show');
-  if(gamesN%3===0) showInterstitial(()=>showScr('so')); else showScr('so');
+  if(!adsOff && gamesN%3===0) showInterstitial(()=>showScr('so')); else showScr('so');
 }
-function watchRevive(){toast('📺 Loading...',1000);setTimeout(()=>{G.ship.alive=true;G.ship.fuel=CFG.FMAX;G.ship.shields=3;G.over=false;G.ship.vy=1;G.ship.vx=0;document.getElementById('ui').classList.add('show');showScr(null);toast('💖 Revived + 3 shields!',2000);loop();},1200);}
+function watchRevive(){toast(adsOff?'💖 Reviving...':'📺 Loading...',1000);setTimeout(()=>{G.ship.alive=true;G.ship.fuel=CFG.FMAX;G.ship.shields=3;G.over=false;G.ship.vy=1;G.ship.vx=0;document.getElementById('ui').classList.add('show');showScr(null);toast('💖 Revived + 3 shields!',2000);loop();},adsOff?300:1200);}
 function showInterstitial(cb){adCb=cb;showScr('sad');let cd=5;document.getElementById('bsk').classList.remove('on');document.getElementById('acd').textContent=cd;clearInterval(adTmr);adTmr=setInterval(()=>{cd--;document.getElementById('acd').textContent=cd;if(cd<=0){clearInterval(adTmr);document.getElementById('bsk').classList.add('on');}},1000);}
 function closeAd(){if(!document.getElementById('bsk').classList.contains('on'))return;showScr(null);if(adCb)adCb();}
 
@@ -954,7 +975,7 @@ function homeLoop() {
 }
 
 // ── INIT ─────────────────────────────────────
-buildThemeSel(); applyTheme(); loadStats(); homeOn=true; homeLoop();
+buildThemeSel(); applyTheme(); applyAdsPref(); loadStats(); homeOn=true; homeLoop();
 </script>
 </body>
 </html>
