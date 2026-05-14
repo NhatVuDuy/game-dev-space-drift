@@ -135,6 +135,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 #toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);border-radius:13px;padding:5px 13px;font-family:'Exo 2',sans-serif;font-size:12px;font-weight:600;color:#fff;white-space:nowrap;z-index:80;opacity:0;transition:opacity .22s;pointer-events:none;}
 #toast.on{opacity:1;}
 #mhint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);font-family:'Exo 2',sans-serif;font-size:9px;color:rgba(255,255,255,.18);letter-spacing:2px;pointer-events:none;z-index:15;display:none;}
+#rf-msg{position:fixed;top:47%;left:50%;transform:translate(-50%,-50%);font-family:'Orbitron',monospace;font-size:18px;font-weight:900;letter-spacing:3px;color:#fff;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:10px 16px;z-index:30;display:none;pointer-events:none;}
+#rf-msg.on{display:block;}
 </style>
 </head>
 <body>
@@ -158,6 +160,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
 <div id="toast"></div>
+<div id="rf-msg">REFUELING... <span id="rf-inline">0%</span></div>
 
 <!-- stage anim -->
 <div id="sa-ov"><div class="saring" id="saring"><div style="font-family:'Orbitron',monospace;font-size:10px;letter-spacing:4px;opacity:.55;color:#fff">STAGE</div><div style="font-family:'Orbitron',monospace;font-size:44px;font-weight:900;color:#fff" id="sanum">2</div><div style="font-family:'Exo 2',sans-serif;font-size:9px;letter-spacing:5px;opacity:.5;color:#fff">CLEAR!</div></div></div>
@@ -365,7 +368,7 @@ let G = null, gyroX = 0, btnX = 0, mouseX = .5;
 let clicking = false, thrusting = false, K = {};
 let raf = 0, overlayRaf = 0, adCb = null, adTmr = 0, gamesN = 0;
 let homeOn = false, homeTick = 0;
-let adsOff = localStorage.getItem('sd_ads_off') === '1';
+let adsOff = true;
 
 function w2s(wy) { return H - (wy - G.cam); }
 
@@ -566,6 +569,7 @@ function startGame() {
   initAudio(); homeOn = false; hcv.style.display = 'none';
   document.getElementById('sc-ov').classList.remove('on');
   document.getElementById('rf-ov').classList.remove('on');
+  document.getElementById('rf-msg').classList.remove('on');
   document.getElementById('ui').classList.add('show');
   // hide all .scr screens
   document.querySelectorAll('.scr').forEach(s => s.classList.remove('on'));
@@ -580,6 +584,7 @@ function startGame() {
     gi:0, nextGateAlt:CFG.GSPC, lastGen:0,
     over:false, landed:false, stgTrans:false, awaitChoice:false, refueling:false,
     landOnPad:true, firstThrust:false, gravOn:false, graceTick:0, normGates:0,
+    refuelPad:null,
     padWY: shipWY - SR - 2,
   };
   G.objs.push({t:'ground', wy:0});
@@ -596,7 +601,7 @@ function loop() {
     ctx.fillStyle = T.sky0 || '#020215'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle='#f44'; ctx.font='11px monospace'; ctx.fillText('ERR: '+e.message, 10, 60);
   }
-  if (!G.over && !G.landed && !G.stgTrans && !G.awaitChoice && !G.refueling)
+  if (!G.over && !G.landed && !G.stgTrans && !G.awaitChoice)
     raf = requestAnimationFrame(loop);
   else if (G.landed) doLanding();
   else if (G.over) endGame(false);
@@ -614,15 +619,52 @@ function update() {
   else { tx=btnX!==0?btnX:gyroX; if(K.ArrowLeft)tx=-1; if(K.ArrowRight)tx=1; }
   const thrInput = thrusting || clicking || K.ArrowUp || K.w || K[' '];
 
-  if (thrInput && !G.firstThrust) { G.firstThrust=true; G.gravOn=false; G.graceTick=G.tick; }
+  if (G.refueling) {
+    if (G.refuelPad) {
+      S.x += (G.refuelPad.x - S.x) * 0.22;
+      S.wy = G.refuelPad.wy + R * 0.42;
+    }
+    S.vx = 0;
+    S.vy = 0;
+    S.angle *= 0.82;
+    S.ta = 0;
+    S.fuel = Math.min(CFG.FMAX, S.fuel + 0.48);
+    const fp = Math.round(S.fuel);
+    document.getElementById('rf-inline').textContent = fp + '%';
+    document.getElementById('rf-msg').classList.add('on');
+    if (fp >= 100 && thrInput) {
+      G.refueling = false;
+      G.refuelPad = null;
+      document.getElementById('rf-msg').classList.remove('on');
+      G.firstThrust = true;
+      G.gravOn = false;
+      G.graceTick = G.tick;
+      toast('Launch ready. Thrust engaged!', 1200);
+      sfx('gate');
+    }
+    if (G.refueling) {
+      const launchPadFx = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
+      if (launchPadFx && G.tick % 2 === 0) spawnPadFx(launchPadFx, 1.2, T.pc);
+      G.parts = G.parts.filter(p => { p.life-=(p.type==='txt'?(p.dl||.015):.021); if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;}else p.y+=p.vy; return p.life>0; });
+      G.exh = G.exh.filter(p => { p.life-=.054; p.x+=p.vx; p.y+=p.vy; return p.life>0; });
+      document.getElementById('hs').textContent = G.score.toLocaleString();
+      document.getElementById('ha').textContent = G.maxAlt+'m';
+      document.getElementById('hf').textContent = fp+'%';
+      document.getElementById('fuel-vf').style.height = fp+'%';
+      document.getElementById('thrust-vf').style.height = '0%';
+      return;
+    }
+  }
+
+  if (!G.refueling && thrInput && !G.firstThrust) { G.firstThrust=true; G.gravOn=false; G.graceTick=G.tick; }
   if (G.firstThrust && !G.gravOn && G.tick-G.graceTick>=30) G.gravOn=true;
 
-  if (G.gravOn) S.vy -= CFG.G;
-  if (thrInput && S.fuel>0) { S.vy+=CFG.THR; S.fuel=Math.max(0,S.fuel-CFG.FBURN); S.ta=1; spawnExh(); }
+  if (!G.refueling && G.gravOn) S.vy -= CFG.G;
+  if (!G.refueling && thrInput && S.fuel>0) { S.vy+=CFG.THR; S.fuel=Math.max(0,S.fuel-CFG.FBURN); S.ta=1; spawnExh(); }
   else S.ta *= .84;
 
   S.vx += (tx*CFG.TILT - S.vx) * .09;
-  if (G.gravOn || thrInput) { S.wy+=S.vy; S.x+=S.vx; }
+  if (!G.refueling && (G.gravOn || thrInput)) { S.wy+=S.vy; S.x+=S.vx; }
   S.sideL = tx<-.2 ? Math.min(1,S.sideL+.13) : Math.max(0,S.sideL-.09);
   S.sideR = tx>.2  ? Math.min(1,S.sideR+.13) : Math.max(0,S.sideR-.09);
   if (S.x<R) { S.x=R; S.vx=Math.abs(S.vx)*.5; }
@@ -676,15 +718,16 @@ function update() {
       }
     }
     else if (o.t==='stagepad' && o.alive) {
-      const ssy=w2s(S.wy), onX=S.x>o.x-o.w/2-R*.4&&S.x<o.x+o.w/2+R*.4, onY=ssy>sy-R*1.2&&ssy<sy+o.h+R;
-      if (onX&&onY&&S.vy<=0) {
-        if(Math.abs(S.vy)<(CFG.LV+0.9) && Math.abs(S.vx)<2.4){
-          S.wy=o.wy+R*.42; S.vx*=0.15; S.vy=0; o.alive=0; startRefuel(); return;
-        } else {
-          S.vy = Math.max(-0.8, S.vy * 0.45);
-          S.vx *= 0.5;
-          S.wy = o.wy + R*.5;
+      const ssy=w2s(S.wy), padL=o.x-o.w/2, padR=o.x+o.w/2;
+      const overlapsPad = (S.x + R > padL) && (S.x - R < padR) && (ssy > sy - R*1.2) && (ssy < sy + o.h + R);
+      if (overlapsPad) {
+        const fullyInside = (S.x - R >= padL) && (S.x + R <= padR);
+        const fromAbove = S.vy < -0.08;
+        const speedOK = Math.abs(S.vy) < (CFG.LV + 0.35) && Math.abs(S.vx) < 1.05;
+        if (fromAbove && fullyInside && speedOK) {
+          S.wy=o.wy+R*.42; S.vx=0; S.vy=0; startRefuel(o); return;
         }
+        doCrash(); return;
       }
     }
     else if (o.t==='gate' && !o.passed) {
@@ -731,14 +774,13 @@ function update() {
 // ── STAGE FLOW ───────────────────────────────
 function choiceFly() {}
 function choiceLand() {}
-function startRefuel() {
-  stopOverlayDraw(); G.refueling=true; sfx('land');
-  document.getElementById('rf-ov').classList.add('on');
-  document.getElementById('rfbtn').classList.remove('on');
-  const rff=document.getElementById('rffill'), rfp=document.getElementById('rfpct');
-  let pct=Math.round(G.ship.fuel); rff.style.width=pct+'%'; rfp.textContent=pct+'%';
-  startOverlayDraw();
-  const iv=setInterval(()=>{ pct=Math.min(100,pct+1); G.ship.fuel=pct; rff.style.width=pct+'%'; rfp.textContent=pct+'%'; document.getElementById('fuel-vf').style.height=pct+'%'; document.getElementById('hf').textContent=pct+'%'; if(pct>=100){clearInterval(iv);document.getElementById('rfbtn').classList.add('on');} },60);
+function startRefuel(pad) {
+  stopOverlayDraw();
+  G.refueling = true;
+  G.refuelPad = pad;
+  sfx('land');
+  document.getElementById('rf-msg').classList.add('on');
+  document.getElementById('rf-inline').textContent = Math.round(G.ship.fuel) + '%';
 }
 function rfLaunch() { document.getElementById('rf-ov').classList.remove('on'); stopOverlayDraw(); G.refueling=false; G.ship.vy=1.5; G.firstThrust=true; G.gravOn=true; G.score+=500*G.stgN; toast('🚀 Stage '+G.stgN+' — GO!',1500); loop(); }
 
@@ -756,10 +798,10 @@ function spawnPadFx(pad, intensity, col) {
     G.parts.push({
       x, y,
       vx: (Math.random() - 0.5) * (0.9 + intensity * 0.5),
-      vy: -0.7 - Math.random() * (1.4 + intensity * 0.8),
+      vy: -0.9 - Math.random() * (1.8 + intensity * 1.15),
       life: 0.5 + Math.random() * 0.45,
-      r: 1.5 + Math.random() * (4.6 * intensity),
-      col: Math.random() < 0.55 ? aC(col || T.tc[0], 0.8) : 'rgba(190,190,190,0.38)'
+      r: 1.8 + Math.random() * (5.2 * intensity),
+      col: Math.random() < 0.45 ? aC(col || T.tc[0], 0.88) : (Math.random()<0.7 ? 'rgba(220,220,220,0.45)' : 'rgba(120,170,255,0.35)')
     });
   }
 }
@@ -796,7 +838,7 @@ function draw() {
   v.addColorStop(0,'transparent'); v.addColorStop(1,'rgba(0,0,0,.26)');
   ctx.fillStyle=v; ctx.fillRect(0,0,W,H);
   // pre-launch hint
-  if (G && !G.firstThrust) {
+  if (G && !G.firstThrust && !G.refueling) {
     ctx.save(); ctx.globalAlpha=.5+.5*Math.sin(G.tick*.08);
     ctx.fillStyle=T.ha; ctx.font='bold 13px "Orbitron",monospace'; ctx.textAlign='center';
     ctx.fillText('HOLD THRUST TO LAUNCH ▲', W/2, H-162); ctx.restore();
@@ -1017,7 +1059,8 @@ function homeLoop() {
 }
 
 // ── INIT ─────────────────────────────────────
-buildThemeSel(); applyTheme(); applyAdsPref(); loadStats(); homeOn=true; homeLoop();
+localStorage.setItem('sd_ads_off','1');
+buildThemeSel(); applyTheme(); applyAdsPref(); loadStats(); homeOn=true; homeLoop(); doGyro();
 </script>
 </body>
 </html>
