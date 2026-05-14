@@ -537,10 +537,10 @@ function mkAst(wy, danger) {
 }
 function mkFuel(wy) { return {t:'fuel',wy,alive:1,x:W*.12+Math.random()*W*.76,r:13,p:Math.random()*6}; }
 function mkGem(wy,bonus) { return {t:'gem',wy,alive:1,bonus,x:W*.08+Math.random()*W*.84,r:bonus?13:9,p:Math.random()*6}; }
-function mkStagePad(wy) {
+function mkStagePad(wy, stageNo) {
   const margin = 32;
   const w = Math.min(100, W*.225);
-  return {t:'stagepad',wy,x:margin+w/2+Math.random()*(W-w-margin*2),w,h:12,alive:1};
+  return {t:'stagepad',wy,x:margin+w/2+Math.random()*(W-w-margin*2),w,h:12,alive:1,stageNo:stageNo||1,fuelReserve:100};
 }
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
 function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random()}; }
@@ -578,7 +578,7 @@ function startGame() {
   const shipWY = H - shipSY;
 
   G = {
-    ship:{x:W/2, wy:shipWY, vx:0,vy:0,angle:0, fuel:CFG.FMAX,alive:true,gems:0,shields:0,ta:0,sideL:0,sideR:0},
+    ship:{x:W/2, wy:shipWY, prevWy:shipWY, vx:0,vy:0,angle:0, fuel:CFG.FMAX,alive:true,gems:0,shields:0,ta:0,sideL:0,sideR:0},
     cam:0, objs:[], parts:[], exh:[],
     score:0, maxAlt:0, stgN:1, tick:0,
     gi:0, nextGateAlt:CFG.GSPC, lastGen:0,
@@ -614,6 +614,7 @@ function update() {
   if (!G || !G.ship.alive) return;
   G.tick++;
   const S = G.ship, R = SR;
+  S.prevWy = S.wy;
   let tx;
   if (!isMob) { tx=(mouseX-.5)*2; if(K.ArrowLeft||K.a)tx=-1; if(K.ArrowRight||K.d)tx=1; }
   else { tx=btnX!==0?btnX:gyroX; if(K.ArrowLeft)tx=-1; if(K.ArrowRight)tx=1; }
@@ -628,11 +629,21 @@ function update() {
     S.vy = 0;
     S.angle *= 0.82;
     S.ta = 0;
-    S.fuel = Math.min(CFG.FMAX, S.fuel + 0.48);
+    const reserve = G.refuelPad ? Math.max(0, G.refuelPad.fuelReserve || 0) : 0;
+    const need = Math.max(0, CFG.FMAX - S.fuel);
+    const fill = Math.min(0.48, reserve, need);
+    if (G.refuelPad) G.refuelPad.fuelReserve = Math.max(0, reserve - fill);
+    S.fuel = Math.min(CFG.FMAX, S.fuel + fill);
     const fp = Math.round(S.fuel);
     document.getElementById('rf-inline').textContent = fp + '%';
     document.getElementById('rf-msg').classList.add('on');
-    if (fp >= 100 && thrInput) {
+    const reserveEmpty = G.refuelPad && G.refuelPad.fuelReserve <= 0.01;
+    if (reserveEmpty && fp < 100) {
+      document.getElementById('rf-msg').classList.remove('on');
+      G.refueling = false;
+      G.refuelPad = null;
+      toast('Reserve tank depleted. Thrust to continue.', 1600);
+    } else if (fp >= 100 && thrInput) {
       G.refueling = false;
       G.refuelPad = null;
       document.getElementById('rf-msg').classList.remove('on');
@@ -641,6 +652,7 @@ function update() {
       G.graceTick = G.tick;
       toast('Launch ready. Thrust engaged!', 1200);
       sfx('gate');
+      cinematicBurst(S.x, w2s(S.wy)+16, 1.2, T.tc[0]);
     }
     if (G.refueling) {
       const launchPadFx = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
@@ -656,7 +668,10 @@ function update() {
     }
   }
 
-  if (!G.refueling && thrInput && !G.firstThrust) { G.firstThrust=true; G.gravOn=false; G.graceTick=G.tick; }
+  if (!G.refueling && thrInput && !G.firstThrust) {
+    G.firstThrust=true; G.gravOn=false; G.graceTick=G.tick;
+    cinematicBurst(S.x, w2s(S.wy)+16, 1.45, T.tc[0]);
+  }
   if (G.firstThrust && !G.gravOn && G.tick-G.graceTick>=30) G.gravOn=true;
 
   if (!G.refueling && G.gravOn) S.vy -= CFG.G;
@@ -718,16 +733,35 @@ function update() {
       }
     }
     else if (o.t==='stagepad' && o.alive) {
-      const ssy=w2s(S.wy), padL=o.x-o.w/2, padR=o.x+o.w/2;
-      const overlapsPad = (S.x + R > padL) && (S.x - R < padR) && (ssy > sy - R*1.2) && (ssy < sy + o.h + R);
-      if (overlapsPad) {
+      const ssy = w2s(S.wy);
+      const psy = w2s(S.prevWy);
+      const padL = o.x - o.w/2;
+      const padR = o.x + o.w/2;
+      const padTop = sy - o.h;
+      const intersectsHoriz = (S.x + R > padL) && (S.x - R < padR);
+
+      // Only evaluate landing when the ship actually crosses down onto the pad top this frame.
+      const crossedTopFromAbove = (psy + R <= padTop) && (ssy + R >= padTop);
+      if (crossedTopFromAbove && intersectsHoriz) {
         const fullyInside = (S.x - R >= padL) && (S.x + R <= padR);
-        const fromAbove = S.vy < -0.08;
-        const speedOK = Math.abs(S.vy) < (CFG.LV + 0.35) && Math.abs(S.vx) < 1.05;
+        const fromAbove = S.vy < -0.05;
+        const speedOK = Math.abs(S.vy) < (CFG.LV + 0.45) && Math.abs(S.vx) < 1.25;
         if (fromAbove && fullyInside && speedOK) {
-          S.wy=o.wy+R*.42; S.vx=0; S.vy=0; startRefuel(o); return;
+          S.wy = o.wy + R*.42;
+          S.vx = 0;
+          S.vy = 0;
+          startRefuel(o);
+          return;
         }
-        doCrash(); return;
+        doCrash();
+        return;
+      }
+
+      // Side/body collision with pad outside touchdown window counts as crash.
+      const sideImpact = intersectsHoriz && (ssy > padTop - R*0.2) && (ssy < sy + o.h + R*0.7);
+      if (sideImpact && !crossedTopFromAbove) {
+        doCrash();
+        return;
       }
     }
     else if (o.t==='gate' && !o.passed) {
@@ -737,7 +771,8 @@ function update() {
         if (o.isStage) {
           boom(W/2,sy,T.ha); boom(W/3,sy,T.ha); boom(2*W/3,sy,T.ha);
           sfx('stage'); G.stgN=o.sNum+1; G.normGates=0;
-          G.objs.push(mkStagePad(o.wy-90));
+          G.objs.forEach(x => { if (x.t === 'stagepad') x.alive = 0; });
+          G.objs.push(mkStagePad(o.wy-90, o.sNum+1));
           popTxt(W/2, sy-30, 'STAGE ' + (o.sNum+1), T.bc, 28, .012);
           toast('Stage gate clear. Land on random pad to refuel.', 1400);
         } else {
@@ -775,6 +810,10 @@ function update() {
 function choiceFly() {}
 function choiceLand() {}
 function startRefuel(pad) {
+  if ((pad.fuelReserve||0) <= 0.01) {
+    toast('Reserve tank depleted.', 1400);
+    return;
+  }
   stopOverlayDraw();
   G.refueling = true;
   G.refuelPad = pad;
@@ -802,6 +841,22 @@ function spawnPadFx(pad, intensity, col) {
       life: 0.5 + Math.random() * 0.45,
       r: 1.8 + Math.random() * (5.2 * intensity),
       col: Math.random() < 0.45 ? aC(col || T.tc[0], 0.88) : (Math.random()<0.7 ? 'rgba(220,220,220,0.45)' : 'rgba(120,170,255,0.35)')
+    });
+  }
+}
+function cinematicBurst(x, y, intensity, col) {
+  const n = 26 + Math.floor(22 * intensity);
+  for (let i=0;i<n;i++) {
+    const a = (-Math.PI/2) + (Math.random()-0.5)*1.7;
+    const sp = 1.8 + Math.random() * (4.4*intensity);
+    G.parts.push({
+      x: x + (Math.random()-0.5)*16,
+      y: y + Math.random()*6,
+      vx: Math.cos(a)*sp*0.45 + (Math.random()-0.5)*0.9,
+      vy: Math.sin(a)*sp - Math.random()*2.2,
+      life: 0.45 + Math.random()*0.5,
+      r: 2 + Math.random()*(7.2*intensity),
+      col: Math.random()<0.55 ? aC(col||T.tc[0],0.95) : (Math.random()<0.7 ? 'rgba(240,240,240,0.6)' : 'rgba(255,176,90,0.55)')
     });
   }
 }
@@ -891,6 +946,20 @@ function drawObj(o, sy) {
       ctx.globalAlpha=1; ctx.fillStyle='rgba(255,255,255,.75)';
       ctx.font='bold 11px "Orbitron",monospace'; ctx.textAlign='center';
       ctx.fillText('▼ LAND HERE', o.x, sy-o.h-10);
+      if ((o.fuelReserve||0) > 0.01) {
+        const canY = sy - o.h - 20;
+        const tw = 8, th = 14;
+        const glow = ctx.createRadialGradient(o.x, canY, 0, o.x, canY, 16);
+        glow.addColorStop(0, 'rgba(255,220,90,0.38)');
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(o.x, canY, 16, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,210,90,0.85)'; rr(o.x-tw/2, canY-th/2, tw, th, 2); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.fillRect(o.x-2, canY-th/2-3, 4, 3);
+      }
+      ctx.fillStyle='rgba(255,255,255,.62)';
+      ctx.font='bold 9px "Orbitron",monospace';
+      ctx.fillText('TANK ' + Math.round(o.fuelReserve||0) + '%', o.x, sy-o.h-22);
       break;
     }
     case 'gate': {
