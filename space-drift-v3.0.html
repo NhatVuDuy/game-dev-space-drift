@@ -618,6 +618,7 @@ function startGame() {
     over:false, landed:false, stgTrans:false, awaitChoice:false, refueling:false,
     landOnPad:true, firstThrust:false, gravOn:false, graceTick:0, normGates:0,
     refuelPad:null,
+    padLaunchGrace:0,
     padWY: shipWY - SR - 2,
   };
   G.objs.push({t:'ground', wy:0});
@@ -656,7 +657,7 @@ function update() {
   if (G.refueling) {
     if (G.refuelPad) {
       S.x += (G.refuelPad.x - S.x) * 0.22;
-      S.wy = G.refuelPad.wy + R * 0.42;
+      S.wy = G.refuelPad.wy + G.refuelPad.h + R;
     }
     S.vx = 0;
     S.vy = 0;
@@ -674,11 +675,11 @@ function update() {
     if (reserveEmpty && fp < 100) {
       document.getElementById('rf-msg').classList.remove('on');
       G.refueling = false;
-      G.refuelPad = null;
+      G.padLaunchGrace = 26;
       toast('Reserve tank depleted. Thrust to continue.', 1600);
     } else if (fp >= 100 && thrInput) {
       G.refueling = false;
-      G.refuelPad = null;
+      G.padLaunchGrace = 26;
       document.getElementById('rf-msg').classList.remove('on');
       G.firstThrust = true;
       G.gravOn = false;
@@ -708,6 +709,7 @@ function update() {
     cinematicLaunchAudio(1.25);
   }
   if (G.firstThrust && !G.gravOn && G.tick-G.graceTick>=30) G.gravOn=true;
+  if (G.padLaunchGrace > 0) G.padLaunchGrace--;
 
   if (!G.refueling && G.gravOn) S.vy -= CFG.G;
   if (!G.refueling && thrInput && S.fuel>0) { S.vy+=CFG.THR; S.fuel=Math.max(0,S.fuel-CFG.FBURN); S.ta=1; spawnExh(); }
@@ -774,15 +776,18 @@ function update() {
       const padR = o.x + o.w/2;
       const padTop = sy - o.h;
       const intersectsHoriz = (S.x + R > padL) && (S.x - R < padR);
+      const leavingPadSafely = G.padLaunchGrace > 0 && S.vy >= -0.02 && intersectsHoriz;
+      if (leavingPadSafely) continue;
 
       // Only evaluate landing when the ship actually crosses down onto the pad top this frame.
       const crossedTopFromAbove = (psy + R <= padTop) && (ssy + R >= padTop);
+      const inPadBodyY = (ssy + R > padTop) && (ssy - R < sy);
       if (crossedTopFromAbove && intersectsHoriz) {
         const fullyInside = (S.x - R >= padL) && (S.x + R <= padR);
         const fromAbove = S.vy < -0.05;
         const speedOK = Math.abs(S.vy) < (CFG.LV + 0.45) && Math.abs(S.vx) < 1.25;
         if (fromAbove && fullyInside && speedOK) {
-          S.wy = o.wy + R*.42;
+          S.wy = o.wy + o.h + R;
           S.vx = 0;
           S.vy = 0;
           startRefuel(o);
@@ -792,9 +797,9 @@ function update() {
         return;
       }
 
-      // Side/body collision with pad outside touchdown window counts as crash.
-      const sideImpact = intersectsHoriz && (ssy > padTop - R*0.2) && (ssy < sy + o.h + R*0.7);
-      if (sideImpact && !crossedTopFromAbove) {
+      // Precise body collision against the actual pad shape.
+      const bodyImpact = intersectsHoriz && inPadBodyY && !crossedTopFromAbove;
+      if (bodyImpact) {
         doCrash();
         return;
       }
@@ -853,6 +858,9 @@ function startRefuel(pad) {
   G.refueling = true;
   G.refuelPad = pad;
   sfx('land');
+  G.ship.wy = pad.wy + pad.h + SR;
+  G.ship.vx = 0;
+  G.ship.vy = 0;
   document.getElementById('rf-msg').classList.add('on');
   document.getElementById('rf-inline').textContent = Math.round(G.ship.fuel) + '%';
 }
