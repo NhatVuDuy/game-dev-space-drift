@@ -324,12 +324,13 @@ let T = TH[AK] || TH.scifi;
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const hcv = document.getElementById('home-cv'), hctx = hcv.getContext('2d');
 let isMob = false, W = 0, H = 0;
+let gyroSteer = false;
 
 function resize() {
   W = cv.width = hcv.width = window.innerWidth;
   H = cv.height = hcv.height = window.innerHeight;
   isMob = W < 820 || 'ontouchstart' in window;
-  const sm = isMob ? 'flex' : 'none';
+  const sm = (isMob && !gyroSteer) ? 'flex' : 'none';
   document.getElementById('thr').style.display = sm;
   document.getElementById('btn-left').style.display = sm;
   document.getElementById('btn-right').style.display = sm;
@@ -406,7 +407,18 @@ function enableGyro() {
     DeviceOrientationEvent.requestPermission().then(r => { if (r==='granted') doGyro(); else toast('Permission denied'); }).catch(() => toast('Gyro unavailable'));
   } else doGyro();
 }
-function doGyro() { window.addEventListener('deviceorientation', e => { gyroX = Math.max(-1, Math.min(1, (e.gamma||0)/28)); }); toast('📱 Tilt active!'); }
+function doGyro() {
+  gyroSteer = true;
+  window.addEventListener('deviceorientation', e => { gyroX = Math.max(-1, Math.min(1, (e.gamma||0)/28)); });
+  const bl = document.getElementById('btn-left');
+  const br = document.getElementById('btn-right');
+  if (bl && br) {
+    bl.style.display = 'none';
+    br.style.display = 'none';
+    btnX = 0;
+  }
+  toast('📱 Tilt active!');
+}
 
 // ── SCREENS ──────────────────────────────────
 function showScr(id) {
@@ -524,7 +536,7 @@ function mkFuel(wy) { return {t:'fuel',wy,alive:1,x:W*.12+Math.random()*W*.76,r:
 function mkGem(wy,bonus) { return {t:'gem',wy,alive:1,bonus,x:W*.08+Math.random()*W*.84,r:bonus?13:9,p:Math.random()*6}; }
 function mkStagePad(wy) {
   const margin = 32;
-  const w = Math.min(200, W*.45);
+  const w = Math.min(100, W*.225);
   return {t:'stagepad',wy,x:margin+w/2+Math.random()*(W-w-margin*2),w,h:12,alive:1};
 }
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
@@ -665,7 +677,15 @@ function update() {
     }
     else if (o.t==='stagepad' && o.alive) {
       const ssy=w2s(S.wy), onX=S.x>o.x-o.w/2-R*.4&&S.x<o.x+o.w/2+R*.4, onY=ssy>sy-R*1.2&&ssy<sy+o.h+R;
-      if (onX&&onY&&S.vy<=0) { if(Math.abs(S.vy)<CFG.LV&&Math.abs(S.vx)<1.5){S.wy=o.wy+R*.4;S.vx=0;S.vy=0;o.alive=0;startRefuel();return;}else{doCrash();return;} }
+      if (onX&&onY&&S.vy<=0) {
+        if(Math.abs(S.vy)<(CFG.LV+0.9) && Math.abs(S.vx)<2.4){
+          S.wy=o.wy+R*.42; S.vx*=0.15; S.vy=0; o.alive=0; startRefuel(); return;
+        } else {
+          S.vy = Math.max(-0.8, S.vy * 0.45);
+          S.vx *= 0.5;
+          S.wy = o.wy + R*.5;
+        }
+      }
     }
     else if (o.t==='gate' && !o.passed) {
       const ssy=w2s(S.wy);
@@ -673,18 +693,10 @@ function update() {
         o.passed=true;
         if (o.isStage) {
           boom(W/2,sy,T.ha); boom(W/3,sy,T.ha); boom(2*W/3,sy,T.ha);
-          sfx('stage'); G.stgN=o.sNum+1; G.normGates=0; G.stgTrans=true;
+          sfx('stage'); G.stgN=o.sNum+1; G.normGates=0;
           G.objs.push(mkStagePad(o.wy-90));
-          startOverlayDraw();
-          document.getElementById('sanum').textContent = o.sNum+1;
-          document.getElementById('sa-ov').classList.add('on');
-          setTimeout(() => {
-            document.getElementById('sa-ov').classList.remove('on');
-            G.stgTrans=false; G.awaitChoice=false;
-            toast('Stage gate clear. Land on random pad to refuel.', 1800);
-            loop();
-          }, 1600);
-          return;
+          popTxt(W/2, sy-30, 'STAGE ' + (o.sNum+1), T.bc, 28, .012);
+          toast('Stage gate clear. Land on random pad to refuel.', 1400);
         } else {
           G.normGates++; boom(S.x,sy,T.ha); sfx('gate');
           popTxt(S.x, sy-20, 'GATE '+o.gNum+' ✓', T.ha);
@@ -693,7 +705,15 @@ function update() {
     }
   }
 
-  G.parts = G.parts.filter(p => { p.life-=p.type==='txt'?.015:.021; if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;}else p.y+=p.vy; return p.life>0; });
+  const launchPad = G.objs.find(x => x.t === 'launchpad');
+  if (launchPad && G.tick % 2 === 0) {
+    spawnPadFx(launchPad, (!G.firstThrust || (thrInput && !G.gravOn)) ? 2.3 : 1.0, T.tc[0]);
+  }
+  if (G.tick % 3 === 0) {
+    G.objs.forEach(x => { if (x.t === 'stagepad' && x.alive) spawnPadFx(x, 1.15, T.pc); });
+  }
+
+  G.parts = G.parts.filter(p => { p.life-=(p.type==='txt'?(p.dl||.015):.021); if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;}else p.y+=p.vy; return p.life>0; });
   G.exh   = G.exh.filter(p => { p.life-=.054; p.x+=p.vx; p.y+=p.vy; return p.life>0; });
 
   document.getElementById('hs').textContent = G.score.toLocaleString();
@@ -726,7 +746,23 @@ function rfLaunch() { document.getElementById('rf-ov').classList.remove('on'); s
 function doCrash() { if(!G.ship.alive)return; G.ship.alive=false; boom(G.ship.x,w2s(G.ship.wy),T.dc); boom(G.ship.x+7,w2s(G.ship.wy)-10,T.bc); sfx('boom'); G.over=true; }
 function spawnExh() { const sy=w2s(G.ship.wy)+20; G.exh.push({x:G.ship.x+(Math.random()-.5)*6,y:sy,vx:(Math.random()-.5)*1.1,vy:1+Math.random()*1.4,life:1,r:3+Math.random()*7,col:T.tc[Math.random()<.5?0:1]}); }
 function boom(x,y,col) { for(let i=0;i<14;i++){const a=Math.random()*6.28,s=1+Math.random()*3.5;G.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:2+Math.random()*7,col});} }
-function popTxt(x,y,text,col) { G.parts.push({type:'txt',x,y,vx:0,vy:-1.3,life:1,text,col}); }
+function popTxt(x,y,text,col,size,decay) { G.parts.push({type:'txt',x,y,vx:0,vy:-1.3,life:1,text,col,sz:size||12,dl:decay||.015}); }
+function spawnPadFx(pad, intensity, col) {
+  const n = Math.max(1, Math.round(2 * intensity));
+  const px = pad.x - pad.w/2;
+  for (let i=0; i<n; i++) {
+    const x = px + Math.random() * pad.w;
+    const y = w2s(pad.wy) - pad.h + 2;
+    G.parts.push({
+      x, y,
+      vx: (Math.random() - 0.5) * (0.9 + intensity * 0.5),
+      vy: -0.7 - Math.random() * (1.4 + intensity * 0.8),
+      life: 0.5 + Math.random() * 0.45,
+      r: 1.5 + Math.random() * (4.6 * intensity),
+      col: Math.random() < 0.55 ? aC(col || T.tc[0], 0.8) : 'rgba(190,190,190,0.38)'
+    });
+  }
+}
 
 // ── DRAW ─────────────────────────────────────
 function draw() {
@@ -751,7 +787,7 @@ function draw() {
   if (G.ship.alive) { ctx.save(); try { drawShip(); } catch(e) { console.warn('drawShip',e.message); } ctx.restore(); }
   for (const p of G.parts) {
     ctx.save(); ctx.globalAlpha=p.life*.82;
-    if (p.type==='txt') { ctx.fillStyle=p.col; ctx.font='bold 12px "Exo 2",sans-serif'; ctx.textAlign='center'; ctx.fillText(p.text,p.x,p.y); }
+    if (p.type==='txt') { ctx.fillStyle=p.col; ctx.font='bold '+(p.sz||12)+'px "Exo 2",sans-serif'; ctx.textAlign='center'; ctx.fillText(p.text,p.x,p.y); }
     else { ctx.fillStyle=p.col; ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0,p.r*p.life),0,Math.PI*2); ctx.fill(); }
     ctx.restore();
   }
@@ -780,6 +816,9 @@ function drawObj(o, sy) {
       const gl=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*.6);
       gl.addColorStop(0,aC(T.pc,.35)); gl.addColorStop(1,'transparent');
       ctx.fillStyle=gl; ctx.fillRect(px-18,sy-24,o.w+36,38);
+      const aura=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*.95);
+      aura.addColorStop(0,aC(T.tc[0],.28)); aura.addColorStop(1,'transparent');
+      ctx.fillStyle=aura; ctx.fillRect(px-34,sy-46,o.w+68,72);
       ctx.fillStyle=T.pc; rr(px,sy-o.h,o.w,o.h,5); ctx.fill();
       ctx.fillStyle='rgba(0,0,0,.2)';
       for(let xi=px+12;xi<px+o.w-12;xi+=18) ctx.fillRect(xi,sy-o.h+2,9,o.h-4);
@@ -797,6 +836,9 @@ function drawObj(o, sy) {
       const gl=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*.72);
       gl.addColorStop(0,aC(T.pc,.35)); gl.addColorStop(1,'transparent');
       ctx.fillStyle=gl; ctx.fillRect(px-20,sy-30,o.w+40,48);
+      const aura2=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*1.2);
+      aura2.addColorStop(0,aC(T.pc,.26)); aura2.addColorStop(1,'transparent');
+      ctx.fillStyle=aura2; ctx.fillRect(px-28,sy-46,o.w+56,72);
       ctx.fillStyle=T.pc; rr(px,sy-o.h,o.w,o.h,6); ctx.fill();
       ctx.fillStyle='rgba(0,0,0,.2)';
       for(let xi=px+10;xi<px+o.w-10;xi+=16) ctx.fillRect(xi,sy-o.h+2,8,o.h-4);

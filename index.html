@@ -139,8 +139,18 @@
     button:hover { filter: brightness(1.06); }
     button:active { transform: scale(0.98); }
 
-    .cards {
+    .cards-wrap {
       margin-top: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.16);
+      padding: 10px;
+      max-height: 290px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .cards {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
@@ -201,6 +211,7 @@
     @media (max-width: 720px) {
       .controls { grid-template-columns: 1fr; }
       button { width: 100%; }
+      .cards-wrap { max-height: 250px; }
       .cards { grid-template-columns: 1fr; }
     }
   </style>
@@ -211,14 +222,16 @@
   <main class="wrap">
     <section class="hero">
       <h1 class="title">SPACE DRIFT</h1>
-      <p class="sub">Chon version va launch ngay. Khuyen nghi: v3.0.</p>
+      <p class="sub">Choose a version and launch instantly. Recommended: v3.0.</p>
 
       <div class="controls">
-        <select id="version-select" aria-label="Chon version"></select>
+        <select id="version-select" aria-label="Choose version"></select>
         <button id="start-btn" type="button">LAUNCH</button>
       </div>
 
-      <div class="cards" id="quick-links"></div>
+      <div class="cards-wrap">
+        <div class="cards" id="quick-links"></div>
+      </div>
       <div class="status" id="status"></div>
     </section>
   </main>
@@ -310,7 +323,7 @@
         select.value = preferred;
       }
 
-      statusEl.textContent = `${sourceLabel}: tim thay ${sorted.length} version.`;
+      statusEl.textContent = `${sourceLabel}: found ${sorted.length} versions.`;
       startBtn.disabled = sorted.length === 0;
     }
 
@@ -318,12 +331,12 @@
       try {
         const files = await scanVersionFiles();
         if (!files.length) throw new Error('No matching files found');
-        renderFiles(files, 'Tu dong quet');
+        renderFiles(files, 'Auto scan');
       } catch {
         const files = fallbackFiles.filter(f => fileRegex.test(f)).sort(compareVersionDesc);
-        renderFiles(files, 'Fallback danh sach co san');
+        renderFiles(files, 'Fallback list');
         statusEl.classList.add('err');
-        statusEl.textContent += ' (server khong list duoc thu muc)';
+        statusEl.textContent += ' (directory listing unavailable)';
       }
     }
 
