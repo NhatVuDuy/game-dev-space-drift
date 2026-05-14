@@ -657,7 +657,7 @@ function update() {
   if (G.refueling) {
     if (G.refuelPad) {
       S.x += (G.refuelPad.x - S.x) * 0.22;
-      S.wy = G.refuelPad.wy + G.refuelPad.h + R;
+      S.wy = G.refuelPad.wy + G.refuelPad.h + R + 0.8;
     }
     S.vx = 0;
     S.vy = 0;
@@ -787,7 +787,7 @@ function update() {
         const fromAbove = S.vy < -0.05;
         const speedOK = Math.abs(S.vy) < (CFG.LV + 0.45) && Math.abs(S.vx) < 1.25;
         if (fromAbove && fullyInside && speedOK) {
-          S.wy = o.wy + o.h + R;
+          S.wy = o.wy + o.h + R + 0.8;
           S.vx = 0;
           S.vy = 0;
           startRefuel(o);
@@ -858,7 +858,7 @@ function startRefuel(pad) {
   G.refueling = true;
   G.refuelPad = pad;
   sfx('land');
-  G.ship.wy = pad.wy + pad.h + SR;
+  G.ship.wy = pad.wy + pad.h + SR + 0.8;
   G.ship.vx = 0;
   G.ship.vy = 0;
   document.getElementById('rf-msg').classList.add('on');
