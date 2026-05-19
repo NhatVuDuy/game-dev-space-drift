@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - claude/tilt-sensor-permission-BJruw
   workflow_dispatch:
 
 permissions:
