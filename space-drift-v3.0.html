@@ -137,6 +137,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 #mhint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);font-family:'Exo 2',sans-serif;font-size:9px;color:rgba(255,255,255,.18);letter-spacing:2px;pointer-events:none;z-index:15;display:none;}
 #rf-msg{position:fixed;top:47%;left:50%;transform:translate(-50%,-50%);font-family:'Orbitron',monospace;font-size:18px;font-weight:900;letter-spacing:3px;color:#fff;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:10px 16px;z-index:30;display:none;pointer-events:none;}
 #rf-msg.on{display:block;}
+
+/* tilt permission overlay */
+#tilt-ov{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.88);display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:all;}
+#tilt-ov.on{display:flex;}
+.tov-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:28px 24px;max-width:290px;width:90%;text-align:center;}
+.tov-ic{font-size:46px;margin-bottom:12px;}
+.tov-t{font-family:'Orbitron',monospace;font-size:15px;font-weight:700;letter-spacing:2px;color:#fff;margin-bottom:8px;}
+.tov-s{font-family:'Exo 2',sans-serif;font-size:12px;color:rgba(255,255,255,.5);margin-bottom:22px;line-height:1.6;}
+.tov-allow{width:100%;height:50px;border:none;border-radius:25px;font-family:'Orbitron',monospace;font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer;margin-bottom:11px;color:#000;background:linear-gradient(135deg,#00cfff,#0060cc);pointer-events:all;transition:transform .1s;}
+.tov-allow:active{transform:scale(.96);}
+.tov-skip{background:transparent;border:1.5px solid rgba(255,255,255,.15);border-radius:20px;padding:9px 22px;color:rgba(255,255,255,.38);font-family:'Exo 2',sans-serif;font-size:11px;cursor:pointer;pointer-events:all;letter-spacing:1px;transition:all .2s;}
+.tov-skip:active{border-color:rgba(255,255,255,.4);color:rgba(255,255,255,.75);}
 </style>
 </head>
 <body>
@@ -161,6 +173,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
 <div id="toast"></div>
 <div id="rf-msg">REFUELING... <span id="rf-inline">0%</span></div>
+
+<!-- Tilt sensor permission overlay -->
+<div id="tilt-ov">
+  <div class="tov-card">
+    <div class="tov-ic">📱</div>
+    <div class="tov-t">TILT CONTROLS</div>
+    <div class="tov-s">Tilt your device left/right to steer the spaceship.<br>Tap below to allow motion sensor access.</div>
+    <button class="tov-allow" onclick="tiltAllow()">ENABLE TILT</button>
+    <button class="tov-skip" onclick="tiltSkip()">Use ◀▶ buttons instead</button>
+  </div>
+</div>
 
 <!-- stage anim -->
 <div id="sa-ov"><div class="saring" id="saring"><div style="font-family:'Orbitron',monospace;font-size:10px;letter-spacing:4px;opacity:.55;color:#fff">STAGE</div><div style="font-family:'Orbitron',monospace;font-size:44px;font-weight:900;color:#fff" id="sanum">2</div><div style="font-family:'Exo 2',sans-serif;font-size:9px;letter-spacing:5px;opacity:.5;color:#fff">CLEAR!</div></div></div>
@@ -344,6 +367,7 @@ function resize() {
 }
 resize();
 window.addEventListener('resize', resize);
+setTimeout(autoDetectSensor, 100);
 
 // ── STARS ────────────────────────────────────
 let STARS = [];
@@ -448,12 +472,75 @@ function doGyro() {
   window.addEventListener('deviceorientation', e => { gyroX = Math.max(-1, Math.min(1, (e.gamma||0)/28)); });
   const bl = document.getElementById('btn-left');
   const br = document.getElementById('btn-right');
-  if (bl && br) {
-    bl.style.display = 'none';
-    br.style.display = 'none';
-    btnX = 0;
-  }
+  if (bl && br) { bl.style.display = 'none'; br.style.display = 'none'; btnX = 0; }
+  const gyroBtn = document.querySelector('.btns[onclick="enableGyro()"]');
+  if (gyroBtn) { gyroBtn.textContent = '📱 TILT ACTIVE ✓'; gyroBtn.style.color = 'rgba(57,255,20,.75)'; }
   toast('📱 Tilt active!');
+}
+
+// ── TILT AUTO-DETECTION ──────────────────────
+function showTiltOverlay() { document.getElementById('tilt-ov').classList.add('on'); }
+function hideTiltOverlay() { document.getElementById('tilt-ov').classList.remove('on'); }
+
+function tiltAllow() {
+  initAudio();
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(r => {
+        hideTiltOverlay();
+        if (r === 'granted') { doGyro(); localStorage.setItem('sd_tilt', '1'); }
+        else { toast('Permission denied — use ◀▶ buttons'); localStorage.setItem('sd_tilt', '0'); }
+      })
+      .catch(() => { hideTiltOverlay(); toast('Tilt unavailable — use ◀▶ buttons'); localStorage.setItem('sd_tilt', '0'); });
+  } else {
+    hideTiltOverlay();
+    doGyro();
+    localStorage.setItem('sd_tilt', '1');
+  }
+}
+
+function tiltSkip() {
+  hideTiltOverlay();
+  localStorage.setItem('sd_tilt', '0');
+  toast('Using ◀▶ button controls');
+}
+
+function autoDetectSensor() {
+  if (!isMob || gyroSteer) return;
+
+  if (typeof DeviceOrientationEvent === 'undefined') {
+    toast('No tilt sensor — use ◀▶ buttons', 3500);
+    return;
+  }
+
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+ requires user gesture — show permission overlay unless user already chose buttons
+    if (localStorage.getItem('sd_tilt') === '0') return;
+    setTimeout(showTiltOverlay, 350);
+  } else {
+    // Android / older iOS — no permission needed, probe sensor directly
+    if (localStorage.getItem('sd_tilt') === '0') return;
+    let done = false;
+    const probe = e => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('deviceorientation', probe);
+      if (e.gamma !== null && e.gamma !== undefined) {
+        doGyro();
+        localStorage.setItem('sd_tilt', '1');
+      } else {
+        toast('No tilt sensor detected — use ◀▶ buttons', 3500);
+      }
+    };
+    window.addEventListener('deviceorientation', probe);
+    setTimeout(() => {
+      if (!done) {
+        done = true;
+        window.removeEventListener('deviceorientation', probe);
+        toast('No tilt sensor detected — use ◀▶ buttons', 3500);
+      }
+    }, 2000);
+  }
 }
 
 // ── SCREENS ──────────────────────────────────
