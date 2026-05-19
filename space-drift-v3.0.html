@@ -436,10 +436,10 @@ const CFG = { G:.065, THR:.19, TILT:2.8, FMAX:100, FBURN:.15, FADD:38, LV:1.7, G
 const SR = 17;
 
 // ── STATE ────────────────────────────────────
-let gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset') || '0') || 0;
-let rawYaw = 0;
 let gyroMode = localStorage.getItem('sd_gyro_mode') || 'yaw';
 let gyroInvert = localStorage.getItem('sd_gyro_invert') === '1' ? -1 : 1;
+let gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset_' + gyroMode) || '0') || 0;
+let rawYaw = 0;
 let G = null, gyroX = 0, btnX = 0, mouseX = .5;
 let clicking = false, thrusting = false, K = {};
 let raf = 0, overlayRaf = 0, adCb = null, adTmr = 0, gamesN = 0;
@@ -524,12 +524,18 @@ function doGyro(showCal) {
   gyroSteer = true;
   window.addEventListener('deviceorientation', e => {
     if (gyroMode === 'yaw') {
-      rawYaw = e.alpha || 0;
-      let d = rawYaw - gyroOffset;
-      if (d > 180) d -= 360;
-      if (d < -180) d += 360;
-      gyroX = Math.max(-1, Math.min(1, d / 30)) * gyroInvert;
-    } else {
+      if (e.alpha === null || e.alpha === undefined) {
+        gyroMode = 'roll'; localStorage.setItem('sd_gyro_mode', 'roll');
+        gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset_roll') || '0') || 0;
+        toast('Yaw unavailable — switched to Roll', 2200);
+      } else {
+        rawYaw = e.alpha;
+        let d = rawYaw - gyroOffset;
+        if (d > 180) d -= 360; if (d < -180) d += 360;
+        gyroX = Math.max(-1, Math.min(1, d / 30)) * gyroInvert;
+      }
+    }
+    if (gyroMode === 'roll') {
       rawYaw = e.gamma || 0;
       gyroX = Math.max(-1, Math.min(1, (rawYaw - gyroOffset) / 28)) * gyroInvert;
     }
@@ -637,7 +643,7 @@ function hideCalOverlay() { document.getElementById('cal-ov').classList.remove('
 
 function doCalibrate() {
   gyroOffset = rawYaw;
-  localStorage.setItem('sd_gyro_offset', gyroOffset);
+  localStorage.setItem('sd_gyro_offset_' + gyroMode, gyroOffset);
   hideCalOverlay();
   toast('✓ Zero position set!', 1800);
 }
@@ -648,8 +654,7 @@ function skipCalibrate() {
 function setGyroMode(mode) {
   gyroMode = mode;
   localStorage.setItem('sd_gyro_mode', mode);
-  gyroOffset = rawYaw;
-  localStorage.setItem('sd_gyro_offset', gyroOffset);
+  gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset_' + mode) || '0') || 0;
   document.getElementById('cal-yaw').classList.toggle('on', mode === 'yaw');
   document.getElementById('cal-roll').classList.toggle('on', mode === 'roll');
 }
