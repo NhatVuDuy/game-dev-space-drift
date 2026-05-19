@@ -197,14 +197,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
   <div class="cal-card">
     <div class="cal-ic">📐</div>
     <div class="cal-t">SET ZERO POSITION</div>
-    <div class="cal-s">Hold your device in the position you want to play in (e.g. lying down), then tap to set it as the neutral center.</div>
+    <div class="cal-s">Point your device in the direction you'll face while playing, then tap to set that as the steering center. Rotate left/right to steer.</div>
     <div class="cal-ind">
       <div class="cal-track">
         <div class="cal-mid"></div>
         <div class="cal-fill" id="cal-fill" style="left:50%;width:0%"></div>
       </div>
       <div class="cal-deg" id="cal-deg">0°</div>
-      <div class="cal-dlbl">CURRENT TILT</div>
+      <div class="cal-dlbl">YAW FROM CENTER</div>
     </div>
     <button class="cal-btn" onclick="doCalibrate()">✓ SET AS CENTER</button>
     <button class="cal-skip" onclick="skipCalibrate()">Skip — keep previous setting</button>
@@ -427,7 +427,7 @@ const SR = 17;
 
 // ── STATE ────────────────────────────────────
 let gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset') || '0') || 0;
-let rawGamma = 0;
+let rawYaw = 0;
 let G = null, gyroX = 0, btnX = 0, mouseX = .5;
 let clicking = false, thrusting = false, K = {};
 let raf = 0, overlayRaf = 0, adCb = null, adTmr = 0, gamesN = 0;
@@ -510,8 +510,11 @@ function enableGyro() {
 function doGyro(showCal) {
   gyroSteer = true;
   window.addEventListener('deviceorientation', e => {
-    rawGamma = e.gamma || 0;
-    gyroX = Math.max(-1, Math.min(1, (rawGamma - gyroOffset) / 28));
+    rawYaw = e.alpha || 0;
+    let yawDiff = rawYaw - gyroOffset;
+    if (yawDiff > 180) yawDiff -= 360;
+    if (yawDiff < -180) yawDiff += 360;
+    gyroX = Math.max(-1, Math.min(1, yawDiff / 30));
     updateCalUI();
   });
   const bl = document.getElementById('btn-left');
@@ -574,7 +577,7 @@ function autoDetectSensor() {
       if (done) return;
       done = true;
       window.removeEventListener('deviceorientation', probe);
-      if (e.gamma !== null && e.gamma !== undefined) {
+      if (e.beta !== null || e.gamma !== null) {
         doGyro(firstTime);
         localStorage.setItem('sd_tilt', '1');
       } else {
@@ -596,14 +599,16 @@ function autoDetectSensor() {
 function updateCalUI() {
   const calOv = document.getElementById('cal-ov');
   if (!calOv || !calOv.classList.contains('on')) return;
-  const deg = Math.round(rawGamma);
-  document.getElementById('cal-deg').textContent = deg + '°';
+  let diff = rawYaw - gyroOffset;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+  document.getElementById('cal-deg').textContent = Math.round(diff) + '°';
   const fill = document.getElementById('cal-fill');
-  if (rawGamma >= 0) {
+  if (diff >= 0) {
     fill.style.left = '50%';
-    fill.style.width = Math.min(50, (rawGamma / 90) * 50) + '%';
+    fill.style.width = Math.min(50, (diff / 60) * 50) + '%';
   } else {
-    const w = Math.min(50, (-rawGamma / 90) * 50);
+    const w = Math.min(50, (-diff / 60) * 50);
     fill.style.left = (50 - w) + '%';
     fill.style.width = w + '%';
   }
@@ -613,7 +618,7 @@ function showCalOverlay() { document.getElementById('cal-ov').classList.add('on'
 function hideCalOverlay() { document.getElementById('cal-ov').classList.remove('on'); }
 
 function doCalibrate() {
-  gyroOffset = rawGamma;
+  gyroOffset = rawYaw;
   localStorage.setItem('sd_gyro_offset', gyroOffset);
   hideCalOverlay();
   toast('✓ Zero position set!', 1800);
