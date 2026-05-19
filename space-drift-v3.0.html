@@ -167,6 +167,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 .cal-btn:active{transform:scale(.96);}
 .cal-skip{background:transparent;border:1.5px solid rgba(255,255,255,.15);border-radius:20px;padding:9px 22px;color:rgba(255,255,255,.35);font-family:'Exo 2',sans-serif;font-size:11px;cursor:pointer;pointer-events:all;letter-spacing:1px;transition:all .2s;}
 .cal-skip:active{border-color:rgba(255,255,255,.4);color:rgba(255,255,255,.7);}
+.cal-opts{display:flex;gap:8px;margin-bottom:16px;}
+.cal-tog{flex:1;height:36px;border-radius:18px;border:1.5px solid rgba(255,255,255,.15);background:transparent;color:rgba(255,255,255,.38);font-family:'Exo 2',sans-serif;font-size:11px;font-weight:700;cursor:pointer;pointer-events:all;letter-spacing:1px;transition:all .15s;}
+.cal-tog.on{background:rgba(0,207,255,.18);border-color:rgba(0,207,255,.6);color:#00cfff;}
+.cal-tog:active{transform:scale(.94);}
 </style>
 </head>
 <body>
@@ -204,7 +208,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
         <div class="cal-fill" id="cal-fill" style="left:50%;width:0%"></div>
       </div>
       <div class="cal-deg" id="cal-deg">0°</div>
-      <div class="cal-dlbl">YAW FROM CENTER</div>
+      <div class="cal-dlbl" id="cal-dlbl">YAW FROM CENTER</div>
+    </div>
+    <div class="cal-opts">
+      <button class="cal-tog" id="cal-yaw" onclick="setGyroMode('yaw')">YAW</button>
+      <button class="cal-tog" id="cal-roll" onclick="setGyroMode('roll')">ROLL</button>
+      <button class="cal-tog" id="cal-inv" onclick="toggleGyroInvert()">⇄ INVERT</button>
     </div>
     <button class="cal-btn" onclick="doCalibrate()">✓ SET AS CENTER</button>
     <button class="cal-skip" onclick="skipCalibrate()">Skip — keep previous setting</button>
@@ -276,6 +285,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <div class="hwr"><div class="hwi">🛬</div><div class="hwx">After Stage Gate: land to refuel, or keep flying!</div></div>
     <div class="hwr"><div class="hwi">⛽</div><div class="hwx">Grab fuel canisters — run dry and you crash</div></div>
     <div class="hwr"><div class="hwi">🚨</div><div class="hwx">Red asteroids are deadly · dodge them!</div></div>
+    <div class="hwr"><div class="hwi">⚫</div><div class="hwx"><b>Black holes</b> warp you back 1–5 stages — avoid the purple glow!</div></div>
     <br>
     <button class="btnp" style="width:100%;margin:0;" onclick="showScr('sh')">GOT IT ✓</button>
   </div>
@@ -428,6 +438,8 @@ const SR = 17;
 // ── STATE ────────────────────────────────────
 let gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset') || '0') || 0;
 let rawYaw = 0;
+let gyroMode = localStorage.getItem('sd_gyro_mode') || 'yaw';
+let gyroInvert = localStorage.getItem('sd_gyro_invert') === '1' ? -1 : 1;
 let G = null, gyroX = 0, btnX = 0, mouseX = .5;
 let clicking = false, thrusting = false, K = {};
 let raf = 0, overlayRaf = 0, adCb = null, adTmr = 0, gamesN = 0;
@@ -451,6 +463,7 @@ function sfx(type) {
     else if (type==='gate') { [523,659,784].forEach((f,i)=>{ const oi=AC.createOscillator(),gi=AC.createGain(); oi.connect(gi); gi.connect(AC.destination); oi.frequency.value=f; gi.gain.setValueAtTime(.13,t+i*.09); gi.gain.exponentialRampToValueAtTime(.001,t+i*.09+.22); oi.start(t+i*.09); oi.stop(t+i*.09+.25); }); }
     else if (type==='stage') { [523,659,784,1047].forEach((f,i)=>{ const oi=AC.createOscillator(),gi=AC.createGain(); oi.connect(gi); gi.connect(AC.destination); oi.frequency.value=f; gi.gain.setValueAtTime(.16,t+i*.11); gi.gain.exponentialRampToValueAtTime(.001,t+i*.11+.28); oi.start(t+i*.11); oi.stop(t+i*.11+.32); }); }
     else if (type==='land') { o.frequency.setValueAtTime(220,t); g.gain.setValueAtTime(.14,t); g.gain.exponentialRampToValueAtTime(.001,t+.3); o.start(t); o.stop(t+.3); }
+    else if (type==='warp') { o.type='sawtooth'; o.frequency.setValueAtTime(660,t); o.frequency.exponentialRampToValueAtTime(35,t+.8); g.gain.setValueAtTime(.22,t); g.gain.exponentialRampToValueAtTime(.001,t+.9); o.start(t); o.stop(t+.95); }
   } catch(e) {}
 }
 function cinematicLaunchAudio(intensity) {
@@ -510,11 +523,16 @@ function enableGyro() {
 function doGyro(showCal) {
   gyroSteer = true;
   window.addEventListener('deviceorientation', e => {
-    rawYaw = e.alpha || 0;
-    let yawDiff = rawYaw - gyroOffset;
-    if (yawDiff > 180) yawDiff -= 360;
-    if (yawDiff < -180) yawDiff += 360;
-    gyroX = Math.max(-1, Math.min(1, yawDiff / 30));
+    if (gyroMode === 'yaw') {
+      rawYaw = e.alpha || 0;
+      let d = rawYaw - gyroOffset;
+      if (d > 180) d -= 360;
+      if (d < -180) d += 360;
+      gyroX = Math.max(-1, Math.min(1, d / 30)) * gyroInvert;
+    } else {
+      rawYaw = e.gamma || 0;
+      gyroX = Math.max(-1, Math.min(1, (rawYaw - gyroOffset) / 28)) * gyroInvert;
+    }
     updateCalUI();
   });
   const bl = document.getElementById('btn-left');
@@ -600,21 +618,21 @@ function updateCalUI() {
   const calOv = document.getElementById('cal-ov');
   if (!calOv || !calOv.classList.contains('on')) return;
   let diff = rawYaw - gyroOffset;
-  if (diff > 180) diff -= 360;
-  if (diff < -180) diff += 360;
+  if (gyroMode === 'yaw') { if (diff > 180) diff -= 360; if (diff < -180) diff += 360; }
+  const maxR = gyroMode === 'yaw' ? 60 : 56;
   document.getElementById('cal-deg').textContent = Math.round(diff) + '°';
+  document.getElementById('cal-dlbl').textContent = gyroMode === 'yaw' ? 'YAW FROM CENTER' : 'ROLL FROM CENTER';
   const fill = document.getElementById('cal-fill');
-  if (diff >= 0) {
-    fill.style.left = '50%';
-    fill.style.width = Math.min(50, (diff / 60) * 50) + '%';
-  } else {
-    const w = Math.min(50, (-diff / 60) * 50);
-    fill.style.left = (50 - w) + '%';
-    fill.style.width = w + '%';
-  }
+  if (diff >= 0) { fill.style.left='50%'; fill.style.width=Math.min(50,(diff/maxR)*50)+'%'; }
+  else { const w=Math.min(50,(-diff/maxR)*50); fill.style.left=(50-w)+'%'; fill.style.width=w+'%'; }
 }
 
-function showCalOverlay() { document.getElementById('cal-ov').classList.add('on'); }
+function showCalOverlay() {
+  document.getElementById('cal-ov').classList.add('on');
+  document.getElementById('cal-yaw').classList.toggle('on', gyroMode === 'yaw');
+  document.getElementById('cal-roll').classList.toggle('on', gyroMode === 'roll');
+  document.getElementById('cal-inv').classList.toggle('on', gyroInvert === -1);
+}
 function hideCalOverlay() { document.getElementById('cal-ov').classList.remove('on'); }
 
 function doCalibrate() {
@@ -626,6 +644,38 @@ function doCalibrate() {
 
 function skipCalibrate() {
   hideCalOverlay();
+}
+function setGyroMode(mode) {
+  gyroMode = mode;
+  localStorage.setItem('sd_gyro_mode', mode);
+  gyroOffset = rawYaw;
+  localStorage.setItem('sd_gyro_offset', gyroOffset);
+  document.getElementById('cal-yaw').classList.toggle('on', mode === 'yaw');
+  document.getElementById('cal-roll').classList.toggle('on', mode === 'roll');
+}
+function toggleGyroInvert() {
+  gyroInvert = -gyroInvert;
+  localStorage.setItem('sd_gyro_invert', gyroInvert === -1 ? '1' : '0');
+  document.getElementById('cal-inv').classList.toggle('on', gyroInvert === -1);
+}
+function doBlackHoleWarp() {
+  if (!G || !G.ship.alive || G.bhWarping) return;
+  G.bhWarping = true;
+  const S = G.ship;
+  const stagesBack = 1 + Math.floor(Math.random() * 5);
+  const warpDist = stagesBack * 3 * CFG.GSPC;
+  const newWy = Math.max(200, S.wy - warpDist);
+  S.wy = newWy; S.vx = (Math.random()-.5)*3; S.vy = .5+Math.random();
+  G.cam = Math.max(0, newWy - H*.5);
+  G.objs.forEach(o => { if (o.t==='gate' && o.wy >= newWy-100) o.passed = false; });
+  G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
+  G.normGates = 0;
+  document.getElementById('hstage').textContent = G.stgN;
+  document.getElementById('hgate').textContent = '0';
+  G.bhFlash = 48;
+  sfx('warp');
+  toast(`🕳️ WARPED BACK ${stagesBack} STAGE${stagesBack>1?'S':''}!`, 3000);
+  setTimeout(()=>{ if(G) G.bhWarping=false; }, 800);
 }
 
 // ── SCREENS ──────────────────────────────────
@@ -749,6 +799,7 @@ function mkStagePad(wy, stageNo) {
 }
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
 function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random()}; }
+function mkBlackHole(wy) { return {t:'bh',wy,x:W*.15+Math.random()*W*.7,r:27+Math.random()*10,pullR:115+Math.random()*55,alive:1}; }
 
 function genWorld(upTo) {
   let alt = G.lastGen + 130;
@@ -757,6 +808,7 @@ function genWorld(upTo) {
     const na = Math.round(Math.random()*(0.4+stg*.5));
     for (let i=0;i<na;i++) G.objs.push(mkAst(alt+Math.random()*210, danger&&Math.random()<.38));
     if (stg>=2 && Math.random()<.28+stg*.02) G.objs.push(mkWall(alt+25,stg));
+    if (stg>=2 && Math.random()<.07+stg*.012) G.objs.push(mkBlackHole(alt+80+Math.random()*180));
     if (Math.random()<.52) G.objs.push(mkFuel(alt+Math.random()*120));
     for (let i=0;i<(0|Math.random()*3);i++) G.objs.push(mkGem(alt+Math.random()*120, Math.random()<.1));
     while (G.nextGateAlt <= alt+CFG.GSPC) {
@@ -792,6 +844,7 @@ function startGame() {
     refuelPad:null,
     padLaunchGrace:0,
     padWY: shipWY - SR - 2,
+    bhFlash:0, bhWarping:false,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -939,6 +992,15 @@ function update() {
       if (Math.hypot(S.x-o.x, w2s(S.wy)-sy)<o.r+R+4) {
         const pts=o.bonus?500:60; S.gems+=(o.bonus?5:1); G.score+=pts;
         o.alive=0; popTxt(o.x,sy,(o.bonus?'💰 ':'💎 ')+'+'+pts, o.bonus?T.bc:T.gc); sfx('gem');
+      }
+    }
+    else if (o.t==='bh' && o.alive) {
+      if (!G.gravOn) continue;
+      const dx=o.x-S.x, dy=o.wy-S.wy, dist=Math.hypot(dx,dy);
+      if (dist<o.pullR) {
+        const f=0.065*Math.pow(1-dist/o.pullR,2);
+        S.vx+=(dx/dist)*f; S.vy+=(dy/dist)*f;
+        if (dist<o.r && !G.bhWarping) { doBlackHoleWarp(); return; }
       }
     }
     else if (o.t==='stagepad' && o.alive) {
@@ -1103,6 +1165,7 @@ function draw() {
     else { ctx.fillStyle=p.col; ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0,p.r*p.life),0,Math.PI*2); ctx.fill(); }
     ctx.restore();
   }
+  if (G.bhFlash>0) { ctx.fillStyle=`rgba(30,0,55,${(G.bhFlash/48)*.88})`; ctx.fillRect(0,0,W,H); G.bhFlash--; }
   // vignette
   const v=ctx.createRadialGradient(W/2,H/2,H*.24,W/2,H/2,H*.74);
   v.addColorStop(0,'transparent'); v.addColorStop(1,'rgba(0,0,0,.26)');
@@ -1213,6 +1276,35 @@ function drawObj(o, sy) {
       const rw=W-(o.gx+o.gw); if(rw>2){rr(o.gx+o.gw,sy-o.h,rw,o.h,0);ctx.fill();}
       ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.setLineDash([4,5]);
       ctx.beginPath();ctx.moveTo(o.gx+o.gw/2,sy-o.h-12);ctx.lineTo(o.gx+o.gw/2,sy+7);ctx.stroke();ctx.setLineDash([]);
+      break;
+    }
+    case 'bh': {
+      if(!o.alive) break;
+      const bt=G.tick*.022;
+      for(let i=3;i>=0;i--){
+        const gr=ctx.createRadialGradient(0,0,o.r*.4,0,0,o.r*(2+i*.5));
+        gr.addColorStop(0,'transparent');
+        gr.addColorStop(.5,i%2===0?`rgba(160,60,255,${.13-i*.025})`:`rgba(255,110,30,${.09-i*.015})`);
+        gr.addColorStop(1,'transparent');
+        ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(0,0,o.r*(2+i*.5),0,Math.PI*2); ctx.fill();
+      }
+      ctx.save(); ctx.rotate(bt);
+      for(let arm=0;arm<3;arm++){
+        ctx.save(); ctx.rotate(arm*Math.PI*2/3);
+        ctx.strokeStyle='rgba(200,80,255,.2)'; ctx.lineWidth=1.5; ctx.beginPath();
+        for(let a=0;a<Math.PI*1.6;a+=0.1){
+          const ar=o.r*(.7+a/(Math.PI*1.6)*.8);
+          a===0?ctx.moveTo(Math.cos(a)*ar,Math.sin(a)*ar):ctx.lineTo(Math.cos(a)*ar,Math.sin(a)*ar);
+        }
+        ctx.stroke(); ctx.restore();
+      }
+      ctx.restore();
+      const dg=ctx.createRadialGradient(0,0,0,0,0,o.r*1.05);
+      dg.addColorStop(0,'rgba(0,0,0,1)'); dg.addColorStop(.8,'rgba(15,0,30,.98)'); dg.addColorStop(1,'transparent');
+      ctx.fillStyle=dg; ctx.beginPath(); ctx.arc(0,0,o.r*1.1,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=.4+.25*Math.sin(G.tick*.07);
+      ctx.fillStyle='rgba(200,100,255,.85)'; ctx.font='bold 9px "Orbitron",monospace'; ctx.textAlign='center';
+      ctx.fillText('⚫ BLACK HOLE',0,-o.r*1.6); ctx.globalAlpha=1;
       break;
     }
     case 'fuel': {
