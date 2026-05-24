@@ -267,7 +267,7 @@ function showScr(id){
   if(id){ const el=document.getElementById(id); if(el) el.classList.add('on'); }
 }
 function goHome(){ cancelAnimationFrame(raf); game=null; loadBest(); showScr('sh'); }
-function goLauncher(){ window.location.href='index.html'; }
+function goLauncher(){ window.location.href='/launcher/'; }
 
 // ── TOAST ───────────────────────────────────
 let _tt;

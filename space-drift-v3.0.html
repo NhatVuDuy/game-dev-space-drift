@@ -271,7 +271,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <button class="btns" onclick="enableGyro()">📱 ENABLE TILT</button>
     <button class="btns" id="cal-home-btn" style="display:none" onclick="showCalOverlay()">📐 RECALIBRATE</button>
     <button class="btns" id="ads-btn" onclick="toggleAds()">ADS: ON</button>
-    <button class="btns" onclick="goLauncher()">⬅ LAUNCHER</button>
   </div>
 </div>
 
@@ -308,7 +307,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
   </div>
   <button class="btnp" onclick="startGame()" style="margin-bottom:8px">RETRY</button>
   <button class="btns" onclick="goHome()">HOME</button>
-  <button class="btns" onclick="goLauncher()">⬅ LAUNCHER</button>
 </div>
 
 <!-- interstitial -->
@@ -695,7 +693,6 @@ function goHome() {
   G = null; hcv.style.display = 'block';
   homeOn = true; applyTheme(); loadStats(); showScr('sh'); homeLoop();
 }
-function goLauncher() { window.location.href = 'index.html'; }
 let _tt;
 function toast(msg, d=2000) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('on'),d); }
 function applyAdsPref() {
