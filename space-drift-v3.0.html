@@ -504,8 +504,8 @@ function steer(v) { btnX=v; document.getElementById('btn-left').classList.toggle
 function enableGyro() {
   initAudio();
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission().then(r => { if (r==='granted') doGyro(true); else toast('Permission denied'); }).catch(() => toast('Gyro unavailable'));
-  } else doGyro(true);
+    DeviceOrientationEvent.requestPermission().then(r => { if (r==='granted') { localStorage.setItem('sd_tilt', '1'); doGyro(true); } else toast('Permission denied'); }).catch(() => toast('Gyro unavailable'));
+  } else { localStorage.setItem('sd_tilt', '1'); doGyro(true); }
 }
 function doGyro(showCal) {
   gyroSteer = true;
@@ -531,7 +531,8 @@ function hideTiltOverlay() { document.getElementById('tilt-ov').classList.remove
 
 function tiltAllow() {
   initAudio();
-  const firstTime = localStorage.getItem('sd_tilt') !== '1';
+  const needsCal = gyroMode === 'yaw' && localStorage.getItem('sd_gyro_offset_yaw') === null;
+  const firstTime = localStorage.getItem('sd_tilt') !== '1' || needsCal;
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission()
       .then(r => {
@@ -568,7 +569,8 @@ function autoDetectSensor() {
   } else {
     // Android / older iOS — no permission needed, probe sensor directly
     if (localStorage.getItem('sd_tilt') === '0') return;
-    const firstTime = localStorage.getItem('sd_tilt') !== '1';
+    const needsCal = gyroMode === 'yaw' && localStorage.getItem('sd_gyro_offset_yaw') === null;
+    const firstTime = localStorage.getItem('sd_tilt') !== '1' || needsCal;
     let done = false;
     const probe = e => {
       if (done) return;
