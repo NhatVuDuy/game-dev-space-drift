@@ -417,7 +417,7 @@ function goHome() {
   G = null; hcv.style.display = 'block';
   homeOn = true; applyTheme(); loadStats(); showScr('sh'); homeLoop();
 }
-function goLauncher() { window.location.href = 'index.html'; }
+function goLauncher() { window.location.href = '/launcher/'; }
 let _tt;
 function toast(msg, d=2000) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('on'),d); }
 
