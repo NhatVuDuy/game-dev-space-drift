@@ -71,6 +71,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 @keyframes bsh{0%{left:-60%}35%{left:120%}100%{left:120%}}
 .btns{width:145px;height:36px;border:1.5px solid rgba(255,255,255,.12);border-radius:18px;background:transparent;color:rgba(255,255,255,.42);font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;cursor:pointer;pointer-events:all;margin-bottom:7px;letter-spacing:1px;transition:all .2s;}
 .btns:active{border-color:rgba(255,255,255,.4);color:rgba(255,255,255,.82);}
+.btns.hi{border-color:rgba(255,255,255,.4);color:rgba(255,255,255,.88);background:rgba(255,255,255,.05);}
 
 /* overlays */
 #sc-ov{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.78);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;pointer-events:all;}
@@ -268,9 +269,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     </div>
     <button class="btnp" id="btnp" onclick="startGame()">LAUNCH</button>
     <button class="btns" onclick="showScr('show')">HOW TO PLAY</button>
-    <button class="btns" onclick="enableGyro()">📱 ENABLE TILT</button>
-    <button class="btns" id="cal-home-btn" style="display:none" onclick="showCalOverlay()">📐 RECALIBRATE</button>
-    <button class="btns" id="ads-btn" onclick="toggleAds()">ADS: ON</button>
+    <button class="btns hi" onclick="enableGyro()">📱 ENABLE TILT</button>
+    <button class="btns hi" id="cal-home-btn" style="display:none" onclick="showCalOverlay()">📐 RECALIBRATE</button>
+    <button class="btns hi" id="ads-btn" onclick="toggleAds()">ADS: ON</button>
     <button class="btns" onclick="goLauncher()">⬅ LAUNCHER</button>
   </div>
 </div>
@@ -924,14 +925,6 @@ function update() {
     if (G.refueling) {
       const launchPadFx = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
       if (launchPadFx && G.tick % 2 === 0) spawnPadFx(launchPadFx, 1.2, T.pc);
-      G.parts = G.parts.filter(p => { p.life-=(p.type==='txt'?(p.dl||.015):.021); if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;}else p.y+=p.vy; return p.life>0; });
-      G.exh = G.exh.filter(p => { p.life-=.054; p.x+=p.vx; p.y+=p.vy; return p.life>0; });
-      document.getElementById('hs').textContent = G.score.toLocaleString();
-      document.getElementById('ha').textContent = G.maxAlt+'m';
-      document.getElementById('hf').textContent = fp+'%';
-      document.getElementById('fuel-vf').style.height = fp+'%';
-      document.getElementById('thrust-vf').style.height = '0%';
-      return;
     }
   }
 
@@ -947,7 +940,7 @@ function update() {
   if (!G.refueling && thrInput && S.fuel>0) { S.vy+=CFG.THR; S.fuel=Math.max(0,S.fuel-CFG.FBURN); S.ta=1; spawnExh(); }
   else S.ta *= .84;
 
-  S.vx += (tx*CFG.TILT - S.vx) * .09;
+  if (!G.refueling) S.vx += (tx*CFG.TILT - S.vx) * .09;
   if (!G.refueling && (G.gravOn || thrInput)) { S.wy+=S.vy; S.x+=S.vx; }
   S.sideL = tx<-.2 ? Math.min(1,S.sideL+.13) : Math.max(0,S.sideL-.09);
   S.sideR = tx>.2  ? Math.min(1,S.sideR+.13) : Math.max(0,S.sideR-.09);
@@ -980,13 +973,13 @@ function update() {
     if (o.t==='ast' && o.alive) {
       o.x+=o.vx; o.rot+=o.rs; o.wy+=(o.vy||0);
       if (o.x<-o.r-20 || o.x>W+o.r+20) { o.alive=0; continue; }
-      if (G.gravOn) {
+      if (G.gravOn && !G.refueling) {
         const dx=S.x-o.x, dy=w2s(S.wy)-sy;
         if (Math.hypot(dx,dy)<o.r+R-5) { if(S.shields>0){S.shields--;o.alive=0;boom(o.x,sy,T.dc);}else{doCrash();return;} }
       }
     }
     else if (o.t==='wall' && o.alive) {
-      if (!G.gravOn) continue;
+      if (!G.gravOn || G.refueling) continue;
       const ssy=w2s(S.wy);
       if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);}else{doCrash();return;} }
     }
@@ -1002,7 +995,7 @@ function update() {
       }
     }
     else if (o.t==='bh' && o.alive) {
-      if (!G.gravOn) continue;
+      if (!G.gravOn || G.refueling) continue;
       const dx=o.x-S.x, dy=o.wy-S.wy, dist=Math.hypot(dx,dy);
       if (dist<o.pullR) {
         const f=0.065*Math.pow(1-dist/o.pullR,2);
@@ -1010,7 +1003,7 @@ function update() {
         if (dist<o.r && !G.bhWarping) { doBlackHoleWarp(); return; }
       }
     }
-    else if (o.t==='stagepad' && o.alive) {
+    else if (o.t==='stagepad' && o.alive && !G.refueling) {
       const ssy = w2s(S.wy);
       const psy = w2s(S.prevWy);
       const padL = o.x - o.w/2;
@@ -1045,7 +1038,7 @@ function update() {
         return;
       }
     }
-    else if (o.t==='gate' && !o.passed) {
+    else if (o.t==='gate' && !o.passed && !G.refueling) {
       const ssy=w2s(S.wy);
       if (ssy<sy+18 && ssy>sy-18 && G.gravOn) {
         o.passed=true;
