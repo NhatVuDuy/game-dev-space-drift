@@ -271,7 +271,8 @@
     }
 
     async function scanVersionFiles() {
-      const res = await fetch('./', { cache: 'no-store' });
+      const scanRoot = window.location.pathname.includes('/launcher/') ? '../' : './';
+      const res = await fetch(scanRoot, { cache: 'no-store' });
       if (!res.ok) throw new Error('Cannot list directory');
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -285,7 +286,9 @@
             return href;
           }
         })
-        .filter(href => !href.includes('/'))
+        .map(href => href.replace(/\/+$/, ''))
+        .map(href => href.split('/').pop())
+        .filter(Boolean)
         .filter(href => fileRegex.test(href));
 
       return [...new Set(files)].sort(compareVersionDesc);

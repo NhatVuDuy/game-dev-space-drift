@@ -544,12 +544,12 @@ document.addEventListener('mouseup', () => { thrusting=false; thrEl.classList.re
 function steer(v) { btnX=v; document.getElementById('btn-left').classList.toggle('on',v===-1); document.getElementById('btn-right').classList.toggle('on',v===1); }
 function enableGyro() {
   initAudio();
-  if (tiltBlocked) return;
+  tiltBlocked = false;
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission().then(r => {
       if (r==='granted') { doGyro(true); localStorage.setItem('sd_tilt', '1'); }
-      else { setTiltGate(false, 'Tilt permission denied. Cannot play on this device.'); tiltBlocked = true; }
-    }).catch(() => { setTiltGate(false, 'Tilt unavailable. Cannot play on this device.'); tiltBlocked = true; });
+      else { setTiltGate(false, 'Tilt permission denied. Please allow and try again.'); }
+    }).catch(() => { setTiltGate(false, 'Tilt unavailable. Please check browser/device settings.'); });
   } else doGyro(true);
 }
 function doGyro(showCal) {
@@ -593,15 +593,16 @@ function hideTiltOverlay() { document.getElementById('tilt-ov').classList.remove
 
 function tiltAllow() {
   initAudio();
+  tiltBlocked = false;
   const firstTime = localStorage.getItem('sd_tilt') !== '1';
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission()
       .then(r => {
         hideTiltOverlay();
         if (r === 'granted') { doGyro(firstTime); localStorage.setItem('sd_tilt', '1'); }
-        else { setTiltGate(false, 'Tilt permission denied. Cannot play on this device.'); tiltBlocked = true; }
+        else { localStorage.removeItem('sd_tilt'); setTiltGate(false, 'Tilt permission denied. Please allow and try again.'); }
       })
-      .catch(() => { hideTiltOverlay(); setTiltGate(false, 'Tilt unavailable. Cannot play on this device.'); tiltBlocked = true; });
+      .catch(() => { hideTiltOverlay(); localStorage.removeItem('sd_tilt'); setTiltGate(false, 'Tilt unavailable. Please check browser/device settings.'); });
   } else {
     hideTiltOverlay();
     doGyro(firstTime);
@@ -611,8 +612,7 @@ function tiltAllow() {
 
 function tiltSkip() {
   hideTiltOverlay();
-  localStorage.setItem('sd_tilt', '0');
-  tiltBlocked = true;
+  localStorage.removeItem('sd_tilt');
   setTiltGate(false, 'Tilt is required to play this game.');
 }
 
@@ -627,11 +627,11 @@ function autoDetectSensor() {
 
   if (typeof DeviceOrientationEvent.requestPermission === 'function') {
     // iOS 13+ requires user gesture — show permission overlay unless user already chose buttons
-    if (localStorage.getItem('sd_tilt') === '0') { tiltBlocked = true; setTiltGate(false, 'Tilt is required to play this game.'); return; }
+    if (localStorage.getItem('sd_tilt') === '1') return;
     setTimeout(showTiltOverlay, 350);
   } else {
     // Android / older iOS — no permission needed, probe sensor directly
-    if (localStorage.getItem('sd_tilt') === '0') { tiltBlocked = true; setTiltGate(false, 'Tilt is required to play this game.'); return; }
+    if (localStorage.getItem('sd_tilt') === '1') { doGyro(false); return; }
     const firstTime = localStorage.getItem('sd_tilt') !== '1';
     let done = false;
     const probe = e => {
