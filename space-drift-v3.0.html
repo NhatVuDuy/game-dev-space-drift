@@ -833,9 +833,10 @@ function buildParallax() {
     scale:20+Math.random()*35, a:.16+Math.random()*.2,
     seed:Math.random()*9999|0, cnt:8+Math.random()*16|0, spr:14+Math.random()*28
   }));
-  DPLANETS = Array.from({length:14}, ()=>({
-    x:Math.random(), y:Math.random()*14, spd:.28+Math.random()*.20,
-    type:Math.random()*6|0, rad:11+Math.random()*28, a:.40+Math.random()*.38
+  DPLANETS = Array.from({length:8}, ()=>({
+    x:Math.random(), y:Math.random()*8, spd:.09+Math.random()*.08,
+    type:Math.random()*6|0, rad:16+Math.random()*32, a:.40+Math.random()*.38,
+    phase:Math.random()*Math.PI*2
   }));
   DNEBULAE = Array.from({length:10}, ()=>({
     x:Math.random(), y:Math.random()*8, spd:.52+Math.random()*.20,
@@ -847,11 +848,11 @@ function buildParallax() {
 }
 
 function drawParallax(c, camY) {
-  const H3=H*3, H10=H*10, H14=H*14, H8=H*8;
-  // deep fixed stars
+  const H3=H*3, H10=H*10, H8=H*8;
+  // deep fixed stars — move down when ship goes up (+)
   for (const s of DSTARS) {
     s.tw+=s.tws;
-    const py=((s.y*H3-camY*s.spd)%H3+H3)%H3;
+    const py=((s.y*H3+camY*s.spd)%H3+H3)%H3;
     if(py>H+3) continue;
     c.globalAlpha=s.a*(.5+.5*Math.sin(s.tw));
     c.fillStyle=s.col; c.beginPath(); c.arc(s.x*W,py,s.r,0,Math.PI*2); c.fill();
@@ -859,8 +860,8 @@ function drawParallax(c, camY) {
   c.globalAlpha=1;
   // constellations + clusters
   for (const o of DPOBJS) {
-    const py=((o.y*H10-camY*o.spd)%H10+H10)%H10;
-    if(py<-90||py>H+90) continue;
+    const py=((o.y*H10+camY*o.spd)%H10+H10)%H10;
+    if(py>H+90) continue;
     const px=o.x*W;
     c.save(); c.globalAlpha=o.a;
     if(o.type==='const') {
@@ -888,16 +889,16 @@ function drawParallax(c, camY) {
   }
   // decorative planets
   for (const p of DPLANETS) {
-    const py=((p.y*H14-camY*p.spd)%H14+H14)%H14;
-    if(py<-80||py>H+80) continue;
+    const py=((p.y*H8+camY*p.spd)%H8+H8)%H8;
+    if(py>H+120) continue;
     c.save(); c.globalAlpha=p.a;
-    _drawPlanet(c,p.x*W,py,p.type,p.rad);
+    _drawPlanet(c,p.x*W,py,p.type,p.rad,p.phase);
     c.restore();
   }
   // near nebulae
   for (const n of DNEBULAE) {
-    const py=((n.y*H8-camY*n.spd)%H8+H8)%H8;
-    if(py<-130||py>H+130) continue;
+    const py=((n.y*H8+camY*n.spd)%H8+H8)%H8;
+    if(py>H+130) continue;
     const px=n.x*W;
     const col=[T.sb[0],T.tc[0],T.sa][n.cIdx];
     c.save(); c.globalAlpha=n.a;
@@ -911,13 +912,29 @@ function drawParallax(c, camY) {
   }
 }
 
-function _drawPlanet(c,x,y,type,rad) {
+function _drawPlanet(c,x,y,type,rad,phase) {
   c.translate(x,y);
   const oa=c.globalAlpha;
+  const tick=G&&G.tick||0;
+  const pulse=.5+.5*Math.sin(tick*.022+(phase||0));
   const halos=['rgba(200,175,95,','rgba(175,135,95,','rgba(195,75,55,','rgba(75,115,195,','rgba(95,195,175,','rgba(150,150,150,'];
-  const gp=c.createRadialGradient(0,0,rad*.5,0,0,rad*2.2);
-  gp.addColorStop(0,halos[type]+'0.08)'); gp.addColorStop(1,'transparent');
-  c.fillStyle=gp; c.beginPath(); c.arc(0,0,rad*2.2,0,Math.PI*2); c.fill();
+  // outer breathing glow
+  const glowR=rad*(3.2+pulse*.9);
+  const gp=c.createRadialGradient(0,0,rad*.3,0,0,glowR);
+  gp.addColorStop(0,halos[type]+((.05+pulse*.09)).toFixed(3)+')');
+  gp.addColorStop(.5,halos[type]+((.01+pulse*.02)).toFixed(3)+')');
+  gp.addColorStop(1,'transparent');
+  c.fillStyle=gp; c.beginPath(); c.arc(0,0,glowR,0,Math.PI*2); c.fill();
+  // sparkle rays when bright
+  if(pulse>.7){
+    const sa=(pulse-.7)/.3;
+    c.globalAlpha=oa*sa*.28; c.strokeStyle=halos[type]+'1)'; c.lineWidth=.7;
+    for(let r=0;r<4;r++){
+      const ang=r*Math.PI*.5+tick*.008;
+      c.beginPath(); c.moveTo(Math.cos(ang)*rad*1.05,Math.sin(ang)*rad*1.05);
+      c.lineTo(Math.cos(ang)*rad*(2.2+sa*.8),Math.sin(ang)*rad*(2.2+sa*.8)); c.stroke();
+    }
+  }
   if(type===0){ // Saturn
     const bg=c.createRadialGradient(-rad*.3,-rad*.3,0,0,0,rad);
     bg.addColorStop(0,'#f5e4b0'); bg.addColorStop(.6,'#d4b870'); bg.addColorStop(1,'#a08040');
