@@ -928,7 +928,7 @@ function startGame() {
     padLaunchGrace:0,
     padWY: shipWY - SR - 2,
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
-    bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0,
+    bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -1009,10 +1009,7 @@ function update() {
       cinematicBurst(S.x, w2s(S.wy)+16, 1.2, T.tc[0]);
       cinematicLaunchAudio(1.0);
     }
-    if (G.refueling) {
-      const launchPadFx = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
-      if (launchPadFx && G.tick % 3 === 0) spawnPadMist(launchPadFx, 1);
-    }
+    if (G.refueling) { /* mist handled separately */ }
   }
 
   if (!G.refueling && thrInput && !G.firstThrust) {
@@ -1151,9 +1148,26 @@ function update() {
     }
   }
 
-  // constant dry-ice mist on launchpad
-  const launchPad = G.objs.find(x => x.t === 'launchpad');
-  if (launchPad && G.tick % 2 === 0) spawnPadMist(launchPad, 2);
+  // post-launch mist: heavy for 5s then tapers off
+  if (G.launchMistTick > 0) {
+    const lp = G.objs.find(x => x.t === 'launchpad');
+    if (lp) {
+      const t = G.launchMistTick / 300; // 1→0 over 5s
+      spawnPadMist(lp, Math.ceil(t * 6 + 1));
+    }
+    G.launchMistTick--;
+  }
+  // stagepad landing approach: mist builds as ship gets close, gone after landing
+  if (!G.refueling && G.gravOn) {
+    for (const o of G.objs) {
+      if (o.t !== 'stagepad' || !o.alive) continue;
+      const wyDist = o.wy - S.wy; // positive = ship is below pad, approaching
+      if (wyDist >= 0 && wyDist < 120 && Math.abs(S.x - o.x) < o.w * .9) {
+        const inten = 1 - wyDist / 120;
+        spawnPadMist(o, Math.round(inten * 6 + 1));
+      }
+    }
+  }
 
   G.parts = G.parts.filter(p => { p.life-=(p.type==='txt'?(p.dl||.015):.021); if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;}else p.y+=p.vy; return p.life>0; });
   G.exh   = G.exh.filter(p => { p.life-=.054; p.x+=p.vx; p.y+=p.vy; return p.life>0; });
@@ -1193,7 +1207,8 @@ function rfLaunch() {
   document.getElementById('rf-ov').classList.remove('on');
   stopOverlayDraw();
   const pad = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
-  if (pad) spawnPadBurst(pad, 32, true); // fire blast on launch
+  if (pad) { spawnPadBurst(pad, 32, true); } // fire blast on launch
+  G.launchMistTick = 300; // 5s of heavy mist
   G.refueling = false; G.ship.vy = 1.5; G.firstThrust = true; G.gravOn = true;
   G.score += 500 * G.stgN; toast('🚀 Stage ' + G.stgN + ' — GO!', 1500); loop();
 }
