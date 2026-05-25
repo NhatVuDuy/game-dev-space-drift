@@ -711,34 +711,50 @@ function toggleGyroInvert() {
 function doBlackHoleWarp(bh) {
   if (!G || !G.ship.alive || G.bhWarping) return;
   G.bhWarping = true;
-  const S = G.ship;
-  const fwd = bh && bh.dir === 'fwd';
-  const stages = 1 + Math.floor(Math.random() * (fwd ? 3 : 5));
-  const warpDist = stages * 3 * CFG.GSPC;
-  if (fwd) {
-    const newWy = S.wy + warpDist;
-    S.wy = newWy; S.vx = (Math.random()-.5)*2; S.vy = -(1+Math.random()*.5);
-    G.cam = Math.max(0, newWy - H*.5);
-    G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
-    genWorld(newWy + 2200);
-    document.getElementById('hstage').textContent = G.stgN;
-    G.bhFlash = 52; G.bhFlashFwd = true;
+  if (!bh || bh.dir === 'back') {
+    // Black hole = death
+    G.bhFlash = 60; G.bhFlashFwd = false;
     sfx('warp');
-    toast(`🌀 WORMHOLE! +${stages} STAGE${stages>1?'S':''}!`, 3000);
-  } else {
-    const newWy = Math.max(200, S.wy - warpDist);
-    S.wy = newWy; S.vx = (Math.random()-.5)*3; S.vy = .5+Math.random();
-    G.cam = Math.max(0, newWy - H*.5);
-    G.objs.forEach(o => { if (o.t==='gate' && o.wy >= newWy-100) o.passed = false; });
-    G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
-    G.normGates = 0;
-    document.getElementById('hstage').textContent = G.stgN;
-    document.getElementById('hgate').textContent = '0';
-    G.bhFlash = 52; G.bhFlashFwd = false;
-    sfx('warp');
-    toast(`🕳️ WARPED BACK ${stages} STAGE${stages>1?'S':''}!`, 3000);
+    setTimeout(()=>{ if(G && G.ship.alive) doCrash(); }, 340);
+    setTimeout(()=>{ if(G) G.bhWarping=false; }, 900);
+    return;
   }
-  setTimeout(()=>{ if(G) G.bhWarping=false; }, 800);
+  // Wormhole = shrink → teleport → grow
+  G.bhWarpPhase = 'shrink';
+  G.bhWarpScale = 1;
+  G.bhWarpTarget = bh;
+  sfx('warp');
+}
+function executeWormholeWarp(bh) {
+  if (!G || !G.ship.alive) return;
+  const S = G.ship;
+  const fwd = Math.random() < .5;
+  const stages = 1 + Math.floor(Math.random() * 3);
+  const warpDist = stages * 3 * CFG.GSPC;
+  let newWy = fwd ? S.wy + warpDist : Math.max(400, S.wy - warpDist);
+  newWy = findClearWy(newWy, fwd ? -1 : 1);
+  S.wy = newWy; S.vx = (Math.random()-.5)*2; S.vy = fwd ? -(1+Math.random()*.5) : (.5+Math.random());
+  G.cam = Math.max(0, newWy - H*.5);
+  G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
+  if (fwd) {
+    genWorld(newWy + 2200);
+  } else {
+    G.objs.forEach(o=>{ if(o.t==='gate'&&o.wy>=newWy-100) o.passed=false; });
+    G.normGates=0; document.getElementById('hgate').textContent='0';
+  }
+  document.getElementById('hstage').textContent = G.stgN;
+  G.bhFlash = 52; G.bhFlashFwd = fwd;
+  G.warpGraceTick = G.tick + 65;
+  toast(fwd?`🌀 WORMHOLE +${stages} STAGE${stages>1?'S':''}!`:`🌀 WORMHOLE -${stages} STAGE${stages>1?'S':''}!`, 3000);
+}
+function findClearWy(targetWy, dir) {
+  const clearR = SR * 5;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const wy = targetWy + attempt * dir * clearR * 2.5;
+    const blocked = G.objs.some(o=>o.alive&&(o.t==='ast'||o.t==='wall'||o.t==='bh')&&Math.abs(o.wy-wy)<clearR);
+    if (!blocked) return wy;
+  }
+  return targetWy + dir * clearR * 15;
 }
 
 // ── SCREENS ──────────────────────────────────
@@ -870,7 +886,11 @@ function genWorld(upTo) {
     const na = Math.round(Math.random()*(0.4+stg*.5));
     for (let i=0;i<na;i++) G.objs.push(mkAst(alt+Math.random()*210, danger&&Math.random()<.38));
     if (stg>=2 && Math.random()<.28+stg*.02) G.objs.push(mkWall(alt+25,stg));
-    if (stg>=2 && Math.random()<.07+stg*.012) G.objs.push(mkBlackHole(alt+80+Math.random()*180));
+    if (stg>=2 && Math.random()<.07+stg*.012) {
+      const bhWy = alt+80+Math.random()*180;
+      const tooClose = G.objs.some(x=>(x.t==='gate'||x.t==='wall'||x.t==='stagepad')&&Math.abs(x.wy-bhWy)<280);
+      if (!tooClose) G.objs.push(mkBlackHole(bhWy));
+    }
     if (Math.random()<.52) G.objs.push(mkFuel(alt+Math.random()*120));
     for (let i=0;i<(0|Math.random()*3);i++) G.objs.push(mkGem(alt+Math.random()*120, Math.random()<.1));
     while (G.nextGateAlt <= alt+CFG.GSPC) {
@@ -908,6 +928,7 @@ function startGame() {
     padLaunchGrace:0,
     padWY: shipWY - SR - 2,
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
+    bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -936,6 +957,16 @@ function update() {
   if (!G || !G.ship.alive) return;
   G.tick++;
   G.bhNear = 0; G.bhNearFwd = false;
+  // wormhole scale animation
+  if (G.bhWarpPhase === 'shrink') {
+    G.bhWarpScale = Math.max(0, G.bhWarpScale - 0.11);
+    if (G.bhWarpScale <= 0) { executeWormholeWarp(G.bhWarpTarget); G.bhWarpPhase = 'grow'; }
+    return;
+  }
+  if (G.bhWarpPhase === 'grow') {
+    G.bhWarpScale = Math.min(1, G.bhWarpScale + 0.08);
+    if (G.bhWarpScale >= 1) { G.bhWarpPhase = null; G.bhWarping = false; }
+  }
   const S = G.ship, R = SR;
   S.prevWy = S.wy;
   let tx;
@@ -980,25 +1011,7 @@ function update() {
     }
     if (G.refueling) {
       const launchPadFx = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
-      if (launchPadFx) {
-        if (G.tick % 2 === 0) spawnPadFx(launchPadFx, 1.2, T.pc);
-        // sideways gas/steam venting
-        if (G.tick % 5 === 0) {
-          const psy = w2s(launchPadFx.wy);
-          for (let si = 0; si < 2; si++) {
-            const side = si === 0 ? -1 : 1;
-            G.parts.push({
-              x: launchPadFx.x + side * (launchPadFx.w * .42 + Math.random() * 5),
-              y: psy - launchPadFx.h - 2,
-              vx: side * (0.4 + Math.random() * 0.9),
-              vy: -(0.2 + Math.random() * 0.5),
-              life: .4 + Math.random() * .3,
-              r: 3 + Math.random() * 5,
-              col: Math.random() < .6 ? 'rgba(200,212,225,.26)' : 'rgba(240,235,220,.2)'
-            });
-          }
-        }
-      }
+      if (launchPadFx && G.tick % 3 === 0) spawnPadMist(launchPadFx, 1);
     }
   }
 
@@ -1028,6 +1041,7 @@ function update() {
   const tc = S.wy - H*.44; G.cam += (tc-G.cam)*.09; if(G.cam<0) G.cam=0;
   if (S.wy > G.lastGen-700) genWorld(G.lastGen+2000);
 
+  const skipCollision = G.warpGraceTick > G.tick;
   for (let i=G.objs.length-1; i>=0; i--) {
     const o = G.objs[i]; const sy = w2s(o.wy);
     if (o.t==='ground') {
@@ -1047,7 +1061,7 @@ function update() {
     if (o.t==='ast' && o.alive) {
       o.x+=o.vx; o.rot+=o.rs; o.wy+=(o.vy||0);
       if (o.x<-o.r-20 || o.x>W+o.r+20) { o.alive=0; continue; }
-      if (G.gravOn && !G.refueling) {
+      if (G.gravOn && !G.refueling && !skipCollision) {
         const dx=S.x-o.x, dy=w2s(S.wy)-sy;
         if (Math.hypot(dx,dy)<o.r+R-5) { if(S.shields>0){S.shields--;o.alive=0;boom(o.x,sy,T.dc);}else{doCrash();return;} }
       }
@@ -1057,7 +1071,7 @@ function update() {
       if (!o.bolts) o.bolts = [];
       o.bolts = o.bolts.filter(b => { b.life -= b.decay; return b.life > 0; });
       if (o.bolts.length < 5 && sy > -40 && sy < H + 40 && Math.random() < .35) spawnWallBolt(o);
-      if (!G.gravOn || G.refueling) continue;
+      if (!G.gravOn || G.refueling || skipCollision) continue;
       const ssy=w2s(S.wy);
       if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);}else{doCrash();return;} }
     }
@@ -1137,13 +1151,9 @@ function update() {
     }
   }
 
+  // constant dry-ice mist on launchpad
   const launchPad = G.objs.find(x => x.t === 'launchpad');
-  if (launchPad && G.tick % 2 === 0) {
-    spawnPadFx(launchPad, (!G.firstThrust || (thrInput && !G.gravOn)) ? 2.3 : 1.0, T.tc[0]);
-  }
-  if (G.tick % 3 === 0) {
-    G.objs.forEach(x => { if (x.t === 'stagepad' && x.alive) spawnPadFx(x, 1.15, T.pc); });
-  }
+  if (launchPad && G.tick % 2 === 0) spawnPadMist(launchPad, 2);
 
   G.parts = G.parts.filter(p => { p.life-=(p.type==='txt'?(p.dl||.015):.021); if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;}else p.y+=p.vy; return p.life>0; });
   G.exh   = G.exh.filter(p => { p.life-=.054; p.x+=p.vx; p.y+=p.vy; return p.life>0; });
@@ -1177,27 +1187,13 @@ function startRefuel(pad) {
   G.ship.vy = 0;
   document.getElementById('rf-msg').classList.add('on');
   document.getElementById('rf-inline').textContent = Math.round(G.ship.fuel) + '%';
-  // soft landing dust — gentle sideways puff, exhaust-style
-  const lsy = w2s(pad.wy);
-  for (let i = 0; i < 10; i++) {
-    const side = Math.random() < .5 ? -1 : 1;
-    G.parts.push({
-      x: pad.x + (Math.random() - .5) * pad.w * .55,
-      y: lsy - pad.h,
-      vx: side * (.3 + Math.random() * 1.1),
-      vy: -(0.2 + Math.random() * 0.8),
-      life: .5 + Math.random() * .4,
-      r: 3 + Math.random() * 6,
-      col: Math.random() < .5 ? 'rgba(205,200,192,.36)' : 'rgba(170,188,210,.26)'
-    });
-  }
+  spawnPadBurst(pad, 22, false); // soft dust puff on landing
 }
 function rfLaunch() {
   document.getElementById('rf-ov').classList.remove('on');
   stopOverlayDraw();
-  // launch smoke puff — soft, like exhaust scaled up
   const pad = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
-  if (pad) for (let i = 0; i < 3; i++) spawnPadFx(pad, 2.0, T.tc[0]);
+  if (pad) spawnPadBurst(pad, 32, true); // fire blast on launch
   G.refueling = false; G.ship.vy = 1.5; G.firstThrust = true; G.gravOn = true;
   G.score += 500 * G.stgN; toast('🚀 Stage ' + G.stgN + ' — GO!', 1500); loop();
 }
@@ -1227,19 +1223,37 @@ function spawnWallBolt(o) {
 function spawnExh() { const sy=w2s(G.ship.wy)+20; G.exh.push({x:G.ship.x+(Math.random()-.5)*6,y:sy,vx:(Math.random()-.5)*1.1,vy:1+Math.random()*1.4,life:1,r:3+Math.random()*7,col:T.tc[Math.random()<.5?0:1]}); }
 function boom(x,y,col) { for(let i=0;i<14;i++){const a=Math.random()*6.28,s=1+Math.random()*3.5;G.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:2+Math.random()*7,col});} }
 function popTxt(x,y,text,col,size,decay) { G.parts.push({type:'txt',x,y,vx:0,vy:-1.3,life:1,text,col,sz:size||12,dl:decay||.015}); }
-function spawnPadFx(pad, intensity, col) {
-  const n = Math.max(1, Math.round(intensity));
-  const px = pad.x - pad.w/2;
-  for (let i=0; i<n; i++) {
-    const x = px + Math.random() * pad.w;
-    const y = w2s(pad.wy) - pad.h + 2;
-    G.parts.push({
-      x, y,
-      vx: (Math.random() - 0.5) * (0.4 + intensity * 0.2),
-      vy: -0.4 - Math.random() * (0.7 + intensity * 0.4),
-      life: 0.55 + Math.random() * 0.4,
-      r: 2 + Math.random() * (2.8 * intensity),
-      col: Math.random() < 0.35 ? aC(col || T.tc[0], 0.55) : (Math.random()<0.6 ? 'rgba(215,215,215,.38)' : 'rgba(190,205,220,.3)')
+// Dry-ice style mist — same technique as G.exh (radial gradient, life fade)
+function spawnPadMist(pad, n) {
+  const hw = pad.w * .5, sy = w2s(pad.wy);
+  for (let i = 0; i < n; i++) {
+    G.exh.push({
+      x: pad.x + (Math.random()-.5) * hw * .9,
+      y: sy - pad.h,
+      vx: (Math.random()-.5) * .42,
+      vy: -(0.05 + Math.random() * .17),
+      life: 1,
+      r: 11 + Math.random() * 24,
+      col: `rgba(190,215,240,${.08+Math.random()*.07})`
+    });
+  }
+}
+// Big smoke/fire burst — same technique as spawnExh, used for launch & landing
+function spawnPadBurst(pad, n, fire) {
+  const hw = pad.w * .5, sy = w2s(pad.wy);
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI*.5 + (Math.random()-.5) * (fire ? 1.1 : 1.7);
+    const sp = fire ? (1.6+Math.random()*3.8) : (.4+Math.random()*.9);
+    G.exh.push({
+      x: pad.x + (Math.random()-.5) * hw * .75,
+      y: sy - pad.h,
+      vx: Math.cos(a) * sp * .55,
+      vy: Math.sin(a) * sp,
+      life: 1,
+      r: fire ? (7+Math.random()*18) : (10+Math.random()*22),
+      col: fire
+        ? (Math.random()<.35 ? T.tc[0] : Math.random()<.5 ? 'rgba(255,145,25,.62)' : 'rgba(215,210,200,.52)')
+        : `rgba(195,215,235,${.1+Math.random()*.09})`
     });
   }
 }
@@ -1540,7 +1554,9 @@ function drawObj(o, sy) {
 
 function drawShip() {
   const S=G.ship, sx=S.x, sy=w2s(S.wy);
-  ctx.translate(sx,sy); ctx.rotate(S.angle);
+  ctx.translate(sx,sy);
+  if (G.bhWarpScale < 1) ctx.scale(G.bhWarpScale, G.bhWarpScale);
+  ctx.rotate(S.angle);
   if(S.shields>0){
     ctx.save();ctx.globalAlpha=.24+Math.sin(G.tick*.14)*.1;ctx.strokeStyle=T.sa;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,28,0,Math.PI*2);ctx.stroke();ctx.restore();
   }
