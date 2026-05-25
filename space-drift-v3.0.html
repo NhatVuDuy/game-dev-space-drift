@@ -860,7 +860,7 @@ function mkStagePad(wy, stageNo) {
   return {t:'stagepad',wy,x:margin+w/2+Math.random()*(W-w-margin*2),w,h:12,alive:1,stageNo:stageNo||1,fuelReserve:100};
 }
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
-function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random()}; }
+function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random(),bolts:[]}; }
 function mkBlackHole(wy) { return {t:'bh',wy,x:W*.15+Math.random()*W*.7,r:27+Math.random()*10,pullR:180+Math.random()*90,alive:1,dir:Math.random()<.4?'fwd':'back'}; }
 
 function genWorld(upTo) {
@@ -1035,6 +1035,10 @@ function update() {
       }
     }
     else if (o.t==='wall' && o.alive) {
+      // bolt particle update — runs regardless of gravOn
+      if (!o.bolts) o.bolts = [];
+      o.bolts = o.bolts.filter(b => { b.life -= b.decay; return b.life > 0; });
+      if (o.bolts.length < 3 && sy > -40 && sy < H + 40 && Math.random() < .2) spawnWallBolt(o);
       if (!G.gravOn || G.refueling) continue;
       const ssy=w2s(S.wy);
       if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);}else{doCrash();return;} }
@@ -1160,6 +1164,26 @@ function rfLaunch() { document.getElementById('rf-ov').classList.remove('on'); s
 
 // ── PARTICLES ────────────────────────────────
 function doCrash() { if(!G.ship.alive)return; G.ship.alive=false; boom(G.ship.x,w2s(G.ship.wy),T.dc); boom(G.ship.x+7,w2s(G.ship.wy)-10,T.bc); sfx('boom'); G.over=true; }
+function spawnWallBolt(o) {
+  const side = (o.gx > 4 && (W - o.gx - o.gw < 4 || Math.random() < .5)) ? 'L' : 'R';
+  const sw = side === 'L' ? o.gx : W - o.gx - o.gw;
+  if (sw < 5) return;
+  const vh = o.h + 7;
+  const maxJ = Math.min(sw * .28, 9);
+  const nPts = 5 + Math.floor(Math.random() * 5);
+  const pts = [];
+  for (let i = 0; i <= nPts; i++) {
+    const t = i / nPts;
+    const dx = (i === 0 || i === nPts) ? 0 : (Math.random() - .5) * 2 * maxJ;
+    pts.push({ t, dx });
+  }
+  const branch = Math.random() < .45 ? {
+    idx: 1 + Math.floor(Math.random() * (nPts - 1)),
+    dx: (Math.random() < .5 ? 1 : -1) * (5 + Math.random() * 11),
+    dy: (Math.random() - .5) * 5
+  } : null;
+  o.bolts.push({ pts, branch, side, life: 1, decay: .1 + Math.random() * .1 });
+}
 function spawnExh() { const sy=w2s(G.ship.wy)+20; G.exh.push({x:G.ship.x+(Math.random()-.5)*6,y:sy,vx:(Math.random()-.5)*1.1,vy:1+Math.random()*1.4,life:1,r:3+Math.random()*7,col:T.tc[Math.random()<.5?0:1]}); }
 function boom(x,y,col) { for(let i=0;i<14;i++){const a=Math.random()*6.28,s=1+Math.random()*3.5;G.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:2+Math.random()*7,col});} }
 function popTxt(x,y,text,col,size,decay) { G.parts.push({type:'txt',x,y,vx:0,vy:-1.3,life:1,text,col,sz:size||12,dl:decay||.015}); }
@@ -1344,84 +1368,76 @@ function drawObj(o, sy) {
       const vh = h + 7;
       const hue = 185 + o.hue * 40;
       const pulse = .6 + .4 * Math.sin(tk * .09);
-      // continuous (no floor) — sparks drift smoothly
-      const sd = (n) => Math.sin(n * 127.1 + tk * .038) * .5 + .5;
 
       const drawSlab = (x, w) => {
         if (w < 2) return;
         const isLeft = x === 0;
         const ix = isLeft ? x + w : x;
-
-        // Core fill with outer-edge horizontal fade into space
+        // Core fill with outer-edge fade into space
         const cg = ctx.createLinearGradient(x, 0, x + w, 0);
-        const fadeStop = Math.min(.35, 22 / w);
-        if (isLeft) {
-          cg.addColorStop(0, `hsla(${hue},65%,5%,0)`);
-          cg.addColorStop(fadeStop, `hsla(${hue},65%,5%,.93)`);
-          cg.addColorStop(1, `hsla(${hue},65%,5%,.93)`);
-        } else {
-          cg.addColorStop(0, `hsla(${hue},65%,5%,.93)`);
-          cg.addColorStop(1 - fadeStop, `hsla(${hue},65%,5%,.93)`);
-          cg.addColorStop(1, `hsla(${hue},65%,5%,0)`);
-        }
-        ctx.fillStyle = cg; ctx.fillRect(x, sy - vh, w, vh);
-
-        // Top & bottom glow as vertical gradient (soft, not hard bars)
-        const vg = ctx.createLinearGradient(0, sy - vh, 0, sy);
-        vg.addColorStop(0,   `hsla(${hue},100%,66%,${.72 * pulse})`);
-        vg.addColorStop(.28, `hsla(${hue},100%,35%,${.1 * pulse})`);
-        vg.addColorStop(.72, `hsla(${hue},100%,35%,${.1 * pulse})`);
-        vg.addColorStop(1,   `hsla(${hue},100%,66%,${.72 * pulse})`);
-        ctx.fillStyle = vg; ctx.fillRect(x, sy - vh, w, vh);
-
+        const fs = Math.min(.35, 22 / w);
+        if (isLeft) { cg.addColorStop(0,`hsla(${hue},65%,5%,0)`); cg.addColorStop(fs,`hsla(${hue},65%,5%,.93)`); cg.addColorStop(1,`hsla(${hue},65%,5%,.93)`); }
+        else        { cg.addColorStop(0,`hsla(${hue},65%,5%,.93)`); cg.addColorStop(1-fs,`hsla(${hue},65%,5%,.93)`); cg.addColorStop(1,`hsla(${hue},65%,5%,0)`); }
+        ctx.fillStyle=cg; ctx.fillRect(x,sy-vh,w,vh);
+        // Top & bottom vertical glow
+        const vg=ctx.createLinearGradient(0,sy-vh,0,sy);
+        vg.addColorStop(0,`hsla(${hue},100%,66%,${.72*pulse})`); vg.addColorStop(.28,`hsla(${hue},100%,35%,${.1*pulse})`);
+        vg.addColorStop(.72,`hsla(${hue},100%,35%,${.1*pulse})`); vg.addColorStop(1,`hsla(${hue},100%,66%,${.72*pulse})`);
+        ctx.fillStyle=vg; ctx.fillRect(x,sy-vh,w,vh);
         // Inner edge glow
-        const gw2 = Math.min(w, 26);
-        const eg = ctx.createLinearGradient(isLeft ? ix - gw2 : ix, 0, isLeft ? ix : ix + gw2, 0);
-        eg.addColorStop(isLeft ? 1 : 0, `hsla(${hue},100%,60%,${.52 * pulse})`);
-        eg.addColorStop(isLeft ? 0 : 1, 'transparent');
-        ctx.fillStyle = eg; ctx.fillRect(isLeft ? ix - gw2 : ix, sy - vh, gw2, vh);
-
-        // Inner edge line — soft gradient rect instead of hard stroke
-        const el = ctx.createLinearGradient(ix - 2, 0, ix + 2, 0);
-        el.addColorStop(isLeft ? 0 : 1, 'transparent');
-        el.addColorStop(.5, `hsla(${hue},100%,92%,${pulse})`);
-        el.addColorStop(isLeft ? 1 : 0, 'transparent');
-        ctx.fillStyle = el; ctx.fillRect(ix - 2, sy - vh, 4, vh);
-
-        // Two sin-wave scans — no modulo wrap, just oscillate back and forth
-        for (let sw = 0; sw < 2; sw++) {
-          const waveY = sy - vh * (.08 + .84 * (.5 + .5 * Math.sin(tk * .046 + sw * Math.PI)));
-          const wg = ctx.createLinearGradient(0, waveY - 5, 0, waveY + 5);
-          wg.addColorStop(0, 'transparent');
-          wg.addColorStop(.5, `hsla(${hue + 8},100%,92%,${.18 * pulse})`);
-          wg.addColorStop(1, 'transparent');
-          ctx.fillStyle = wg; ctx.fillRect(x, waveY - 5, w, 10);
-        }
-
-        // Smooth arc sparks — sd() uses tk*.038 so they drift, not teleport
-        const nSparks = Math.max(3, Math.ceil(w / 16));
-        for (let i = 0; i < nSparks; i++) {
-          const bright = sd(i * 2.9 + x * .007);
-          if (bright < .38) continue;
-          const ny = sy - vh * .08 - vh * .84 * sd(i * 5.3 + x * .013);
-          const alpha = (bright - .38) / .62;
-          ctx.fillStyle = `hsla(${hue + 15},100%,96%,${alpha * .85})`;
-          ctx.beginPath(); ctx.arc(ix, ny, 1.4 + bright * .9, 0, Math.PI * 2); ctx.fill();
-          if (bright > .7) {
-            const sLen = 4 + sd(i * 7.1) * 9;
-            const sAngle = (isLeft ? .48 : Math.PI - .48) + (sd(i * 3.7) - .5) * 1.3;
-            ctx.strokeStyle = `hsla(${hue},100%,86%,${(bright - .7) * 2.8})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(ix, ny);
-            ctx.lineTo(ix + Math.cos(sAngle) * sLen, ny + Math.sin(sAngle) * sLen);
-            ctx.stroke();
-          }
-        }
+        const gw2=Math.min(w,26);
+        const eg=ctx.createLinearGradient(isLeft?ix-gw2:ix,0,isLeft?ix:ix+gw2,0);
+        eg.addColorStop(isLeft?1:0,`hsla(${hue},100%,60%,${.52*pulse})`); eg.addColorStop(isLeft?0:1,'transparent');
+        ctx.fillStyle=eg; ctx.fillRect(isLeft?ix-gw2:ix,sy-vh,gw2,vh);
+        // Inner edge soft line
+        const el=ctx.createLinearGradient(ix-2,0,ix+2,0);
+        el.addColorStop(isLeft?0:1,'transparent'); el.addColorStop(.5,`hsla(${hue},100%,92%,${pulse})`); el.addColorStop(isLeft?1:0,'transparent');
+        ctx.fillStyle=el; ctx.fillRect(ix-2,sy-vh,4,vh);
+        // Sin-wave scan
+        const waveY=sy-vh*(.08+.84*(.5+.5*Math.sin(tk*.046)));
+        const wg=ctx.createLinearGradient(0,waveY-5,0,waveY+5);
+        wg.addColorStop(0,'transparent'); wg.addColorStop(.5,`hsla(${hue+8},100%,92%,${.15*pulse})`); wg.addColorStop(1,'transparent');
+        ctx.fillStyle=wg; ctx.fillRect(x,waveY-5,w,10);
       };
 
       if (o.gx > 2) drawSlab(0, o.gx);
       const rw = W - (o.gx + o.gw); if (rw > 2) drawSlab(o.gx + o.gw, rw);
+
+      // Lightning bolt particles — same pattern as G.exh
+      if (o.bolts) {
+        for (const b of o.bolts) {
+          const bix = b.side === 'L' ? o.gx : o.gx + o.gw;
+          ctx.save();
+          ctx.globalAlpha = b.life * b.life; // quadratic: flash bright, snap fade
+          ctx.beginPath();
+          for (let i = 0; i < b.pts.length; i++) {
+            const px = bix + b.pts[i].dx;
+            const py = sy - vh + b.pts[i].t * vh;
+            i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+          }
+          // glow pass
+          ctx.strokeStyle = `hsla(${hue+20},100%,72%,.88)`;
+          ctx.lineWidth = 3;
+          ctx.shadowColor = `hsla(${hue},100%,65%,1)`;
+          ctx.shadowBlur = 14;
+          ctx.stroke();
+          // bright white core
+          ctx.strokeStyle = 'rgba(255,255,255,.96)';
+          ctx.lineWidth = 1;
+          ctx.shadowBlur = 0;
+          ctx.stroke();
+          // branch
+          if (b.branch) {
+            const bp = b.pts[b.branch.idx];
+            const bpx = bix + bp.dx, bpy = sy - vh + bp.t * vh;
+            ctx.beginPath(); ctx.moveTo(bpx, bpy);
+            ctx.lineTo(bpx + b.branch.dx, bpy + b.branch.dy);
+            ctx.strokeStyle = `hsla(${hue+20},100%,80%,.65)`;
+            ctx.lineWidth = 1; ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
       break;
     }
     case 'bh': {
