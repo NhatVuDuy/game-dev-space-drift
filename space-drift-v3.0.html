@@ -217,7 +217,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
       <button class="cal-tog" id="cal-inv" onclick="toggleGyroInvert()">⇄ INVERT</button>
     </div>
     <button class="cal-btn" onclick="doCalibrate()">✓ SET AS CENTER</button>
-    <button class="cal-skip" onclick="skipCalibrate()">Skip — keep previous setting</button>
+    <button class="cal-skip" onclick="resetCalibrate()">↺ Reset to device default</button>
+    <button class="cal-skip" onclick="skipCalibrate()" style="margin-top:6px;font-size:10px;opacity:.6">Close</button>
   </div>
 </div>
 
@@ -225,9 +226,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 <div id="tilt-ov">
   <div class="tov-card">
     <div class="tov-ic">📱</div>
-    <div class="tov-t">TILT CONTROLS</div>
-    <div class="tov-s">Tilt your device left/right to steer the spaceship.<br>Tap below to allow motion sensor access.</div>
-    <button class="tov-allow" onclick="tiltAllow()">ENABLE TILT</button>
+    <div class="tov-t">TILT TO STEER</div>
+    <div class="tov-s">Tilt your device left/right to steer.<br>Roll mode · No invert · Calibrate anytime via menu.</div>
+    <button class="tov-allow" onclick="tiltAllow()">ALLOW MOTION ACCESS</button>
     <button class="tov-skip" onclick="tiltSkip()">Use ◀▶ buttons instead</button>
   </div>
 </div>
@@ -435,7 +436,7 @@ const CFG = { G:.065, THR:.19, TILT:2.8, FMAX:100, FBURN:.15, FADD:38, LV:1.7, G
 const SR = 17;
 
 // ── STATE ────────────────────────────────────
-let gyroMode = localStorage.getItem('sd_gyro_mode') || 'yaw';
+let gyroMode = localStorage.getItem('sd_gyro_mode') || 'roll';
 let gyroInvert = localStorage.getItem('sd_gyro_invert') === '1' ? -1 : 1;
 let gyroOffset = parseFloat(localStorage.getItem('sd_gyro_offset_' + gyroMode) || '0') || 0;
 let rawYaw = 0;
@@ -544,14 +545,8 @@ thrEl.addEventListener('mousedown', () => { thrusting=true; thrEl.classList.add(
 document.addEventListener('mouseup', () => { thrusting=false; thrEl.classList.remove('on'); });
 function steer(v) { btnX=v; document.getElementById('btn-left').classList.toggle('on',v===-1); document.getElementById('btn-right').classList.toggle('on',v===1); }
 function enableGyro() {
-  initAudio();
-  tiltBlocked = false;
-  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission().then(r => {
-      if (r==='granted') { doGyro(true); localStorage.setItem('sd_tilt', '1'); }
-      else { setTiltGate(false, 'Tilt permission denied. Please allow and try again.'); }
-    }).catch(() => { setTiltGate(false, 'Tilt unavailable. Please check browser/device settings.'); });
-  } else { localStorage.setItem('sd_tilt', '1'); doGyro(true); }
+  // legacy button on home screen — delegates to tiltAllow flow
+  showTiltOverlay();
 }
 function doGyro(showCal) {
   if (gyroBound) return;
@@ -584,8 +579,7 @@ function doGyro(showCal) {
   if (bl && br) { bl.style.display = 'none'; br.style.display = 'none'; btnX = 0; }
   const calBtn = document.getElementById('cal-home-btn');
   if (calBtn) calBtn.style.display = '';
-  if (showCal) toast('📱 Tilt active!');
-  if (showCal) setTimeout(showCalOverlay, 700);
+  toast('📱 Tilt active — use Calibrate button to fine-tune', 2200);
 }
 
 // ── TILT AUTO-DETECTION ──────────────────────
@@ -594,73 +588,44 @@ function hideTiltOverlay() { document.getElementById('tilt-ov').classList.remove
 
 function tiltAllow() {
   initAudio();
-  tiltBlocked = false;
-  const needsCal = gyroMode === 'yaw' && localStorage.getItem('sd_gyro_offset_yaw') === null;
-  const firstTime = localStorage.getItem('sd_tilt') !== '1' || needsCal;
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission()
-      .then(r => {
-        hideTiltOverlay();
-        if (r === 'granted') { doGyro(firstTime); localStorage.setItem('sd_tilt', '1'); }
-        else { localStorage.removeItem('sd_tilt'); setTiltGate(false, 'Tilt permission denied. Please allow and try again.'); }
-      })
-      .catch(() => { hideTiltOverlay(); localStorage.removeItem('sd_tilt'); setTiltGate(false, 'Tilt unavailable. Please check browser/device settings.'); });
+    DeviceOrientationEvent.requestPermission().then(r => {
+      hideTiltOverlay();
+      if (r === 'granted') { doGyro(false); localStorage.setItem('sd_tilt', '1'); }
+      else { toast('Tilt permission denied — using buttons', 2400); }
+    }).catch(() => { hideTiltOverlay(); });
   } else {
-    hideTiltOverlay();
-    doGyro(firstTime);
-    localStorage.setItem('sd_tilt', '1');
+    hideTiltOverlay(); doGyro(false); localStorage.setItem('sd_tilt', '1');
   }
 }
 
 function tiltSkip() {
   hideTiltOverlay();
   localStorage.removeItem('sd_tilt');
-  setTiltGate(false, 'Tilt is required to play this game.');
 }
 
 function autoDetectSensor() {
-  if (gyroSteer) return;
-
-  if (typeof DeviceOrientationEvent === 'undefined') {
-    tiltBlocked = true;
-    setTiltGate(false, 'Your device has no tilt sensor, so this game cannot be played.');
-    return;
-  }
+  if (gyroSteer || !isMob) return;
+  if (typeof DeviceOrientationEvent === 'undefined') return; // no sensor — silently use buttons
 
   if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS 13+ requires user gesture — show permission overlay unless user already chose buttons
-    if (localStorage.getItem('sd_tilt') === '1') return;
+    // iOS: requestPermission needs a user gesture — always show overlay so user can tap
     setTimeout(showTiltOverlay, 350);
   } else {
-    // Android / older iOS — no permission needed, probe sensor directly
-    if (localStorage.getItem('sd_tilt') === '1') {
-      const needsCal = gyroMode === 'yaw' && localStorage.getItem('sd_gyro_offset_yaw') === null;
-      doGyro(needsCal);
-      return;
-    }
-    const firstTime = localStorage.getItem('sd_tilt') !== '1';
+    // Android/other: no permission dialog needed — enable silently
+    if (localStorage.getItem('sd_tilt') === '1') { doGyro(false); return; }
+    // First time: probe that sensor actually fires
     let done = false;
     const probe = e => {
-      if (done) return;
-      done = true;
+      if (done) return; done = true;
       window.removeEventListener('deviceorientation', probe);
       if (e.beta !== null || e.gamma !== null) {
-        doGyro(firstTime);
-        localStorage.setItem('sd_tilt', '1');
-      } else {
-        tiltBlocked = true;
-        setTiltGate(false, 'Your device has no tilt sensor, so this game cannot be played.');
+        doGyro(false); localStorage.setItem('sd_tilt', '1');
       }
+      // no signal → silently fall back to buttons
     };
     window.addEventListener('deviceorientation', probe);
-    setTimeout(() => {
-      if (!done) {
-        done = true;
-        window.removeEventListener('deviceorientation', probe);
-        tiltBlocked = true;
-        setTiltGate(false, 'Your device has no tilt sensor, so this game cannot be played.');
-      }
-    }, 2000);
+    setTimeout(() => { if (!done) { done = true; window.removeEventListener('deviceorientation', probe); } }, 2000);
   }
 }
 
@@ -693,6 +658,12 @@ function doCalibrate() {
   toast('✓ Zero position set!', 1800);
 }
 
+function resetCalibrate() {
+  gyroOffset = 0;
+  localStorage.removeItem('sd_gyro_offset_' + gyroMode);
+  hideCalOverlay();
+  toast('↺ Reset to device default', 1800);
+}
 function skipCalibrate() {
   hideCalOverlay();
 }
@@ -929,7 +900,7 @@ function startGame() {
     padWY: shipWY - SR - 2,
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
-    landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false,
+    landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false, exploding:false,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -945,7 +916,7 @@ function loop() {
     ctx.fillStyle = T.sky0 || '#020215'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle='#f44'; ctx.font='11px monospace'; ctx.fillText('ERR: '+e.message, 10, 60);
   }
-  if (!G.over && !G.landed && !G.stgTrans && !G.awaitChoice)
+  if (!G.over && !G.exploding && !G.landed && !G.stgTrans && !G.awaitChoice)
     raf = requestAnimationFrame(loop);
   else if (G.landed) doLanding();
   else if (G.over) endGame(false);
@@ -1271,7 +1242,43 @@ function rfLaunch() {
 }
 
 // ── PARTICLES ────────────────────────────────
-function doCrash() { if(!G.ship.alive)return; G.ship.alive=false; boom(G.ship.x,w2s(G.ship.wy),T.dc); boom(G.ship.x+7,w2s(G.ship.wy)-10,T.bc); sfx('boom'); G.over=true; }
+function doCrash() {
+  if (!G.ship.alive) return;
+  G.ship.alive = false;
+  G.exploding = true;
+  sfx('boom');
+  cancelAnimationFrame(raf);
+  const sx = G.ship.x, sy = w2s(G.ship.wy);
+  // primary fireball burst
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random()*6.28, s = 2+Math.random()*5.5;
+    const c = Math.random();
+    G.parts.push({x:sx+(Math.random()-.5)*14,y:sy+(Math.random()-.5)*14,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:5+Math.random()*13,
+      col:c<.38?T.dc:c<.65?'rgba(255,155,20,.92)':'rgba(255,230,80,.85)'});
+  }
+  // ship debris shards
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random()*6.28, s = 1+Math.random()*3;
+    G.parts.push({x:sx+(Math.random()-.5)*10,y:sy+(Math.random()-.5)*10,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.8+Math.random()*.2,r:1.5+Math.random()*4,col:T.bc});
+  }
+  // delayed second pop
+  setTimeout(() => {
+    if (!G) return;
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random()*6.28, s = 1+Math.random()*4.5;
+      G.parts.push({x:sx+(Math.random()-.5)*22,y:sy+(Math.random()-.5)*22,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:4+Math.random()*11,
+        col:Math.random()<.5?'rgba(255,110,20,.9)':'rgba(240,210,60,.78)'});
+    }
+  }, 130);
+  let f = 0;
+  (function expLoop() {
+    draw();
+    G.parts = G.parts.filter(p=>{p.life-=(p.type==='txt'?(p.dl||.015):.026);if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.055;}else p.y+=p.vy;return p.life>0;});
+    G.exh   = G.exh.filter(p=>{p.life-=.054;p.x+=p.vx;p.y+=p.vy;return p.life>0;});
+    if (++f < 58) requestAnimationFrame(expLoop);
+    else { G.exploding = false; G.over = true; endGame(false); }
+  })();
+}
 function spawnWallBolt(o) {
   const side = (o.gx > 4 && (W - o.gx - o.gw < 4 || Math.random() < .5)) ? 'L' : 'R';
   const sw = side === 'L' ? o.gx : W - o.gx - o.gw;
