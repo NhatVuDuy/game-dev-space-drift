@@ -139,6 +139,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 #toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);border-radius:13px;padding:5px 13px;font-family:'Exo 2',sans-serif;font-size:12px;font-weight:600;color:#fff;white-space:nowrap;z-index:80;opacity:0;transition:opacity .22s;pointer-events:none;}
 #toast.on{opacity:1;}
 #mhint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);font-family:'Exo 2',sans-serif;font-size:9px;color:rgba(255,255,255,.18);letter-spacing:2px;pointer-events:none;z-index:15;display:none;}
+#ver{position:fixed;bottom:8px;left:10px;font-family:'Orbitron',monospace;font-size:9px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.25);pointer-events:none;z-index:5;}
 
 /* tilt permission overlay */
 #tilt-ov{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.88);display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:all;}
@@ -195,6 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
+<div id="ver">v3.1</div>
 <div id="toast"></div>
 
 
@@ -453,19 +455,22 @@ let gyroBound = false;
 function w2s(wy) { return H - (wy - G.cam); }
 function setTiltGate(ready, reason) {
   tiltReady = !!ready;
+  // iOS asks permission inline on LAUNCH tap; desktop uses mouse — neither needs this gate
+  const isIOS = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+  const block = !tiltReady && isMob && !isIOS;
   const launchBtn = document.getElementById('btnp');
   const retryBtn = document.querySelector('#so .btnp');
   const tiltBtn = document.querySelector('.btns[onclick="enableGyro()"]');
   if (launchBtn) {
-    launchBtn.disabled = !tiltReady;
-    launchBtn.style.opacity = tiltReady ? '1' : '.45';
-    launchBtn.style.pointerEvents = tiltReady ? 'all' : 'none';
-    launchBtn.textContent = tiltReady ? 'LAUNCH' : 'TILT REQUIRED';
+    launchBtn.disabled = block;
+    launchBtn.style.opacity = block ? '.45' : '1';
+    launchBtn.style.pointerEvents = block ? 'none' : 'all';
+    launchBtn.textContent = block ? 'TILT REQUIRED' : 'LAUNCH';
   }
   if (retryBtn) {
-    retryBtn.disabled = !tiltReady;
-    retryBtn.style.opacity = tiltReady ? '1' : '.45';
-    retryBtn.style.pointerEvents = tiltReady ? 'all' : 'none';
+    retryBtn.disabled = block;
+    retryBtn.style.opacity = block ? '.45' : '1';
+    retryBtn.style.pointerEvents = block ? 'none' : 'all';
   }
   if (tiltBtn) {
     if (tiltReady) {
@@ -476,7 +481,7 @@ function setTiltGate(ready, reason) {
       tiltBtn.style.color = '';
     }
   }
-  if (!tiltReady && reason) toast(reason, 2800);
+  if (block && reason) toast(reason, 2800);
 }
 
 // ── AUDIO ────────────────────────────────────
@@ -610,8 +615,8 @@ function autoDetectSensor() {
   if (typeof DeviceOrientationEvent === 'undefined') return; // no sensor — silently use buttons
 
   if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // iOS: requestPermission needs a user gesture — always show overlay so user can tap
-    setTimeout(showTiltOverlay, 350);
+    // iOS: permission requested inline when user taps LAUNCH — no overlay needed here
+    return;
   } else {
     // Android/other: no permission dialog needed — enable silently
     if (localStorage.getItem('sd_tilt') === '1') { doGyro(false); return; }
@@ -1248,8 +1253,18 @@ function genWorld(upTo) {
 }
 
 // ── START ────────────────────────────────────
-function startGame() {
-  if (!tiltReady) { toast('Tilt is required to play. Please enable tilt first.', 2200); return; }
+async function startGame() {
+  const isIOS = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
+  if (!tiltReady && isIOS) {
+    // iOS: request tilt permission inline on the LAUNCH tap (user gesture available here)
+    try {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if (r === 'granted') doGyro(false);
+      else toast('Tilt permission denied — using buttons instead', 2400);
+    } catch(e) {}
+  } else if (!tiltReady && isMob && !isIOS) {
+    toast('Tilt is required to play. Please enable tilt first.', 2200); return;
+  }
   cancelAnimationFrame(raf); cancelAnimationFrame(overlayRaf);
   initAudio(); homeOn = false; hcv.style.display = 'none';
   document.getElementById('sc-ov').classList.remove('on');
@@ -1525,7 +1540,7 @@ function update() {
           sfx('stage'); G.stgN=o.sNum+1; G.normGates=0;
           G.objs.forEach(x => { if (x.t === 'stagepad') x.alive = 0; });
           G.objs.push(mkStagePad(o.wy-90, o.sNum+1));
-          G.parts.push({type:'stgflash',x:W/2,y:H*.44,text:'STAGE '+(o.sNum+1),col:T.bc,life:1,dl:.009});
+          G.parts.push({type:'stgflash',x:W/2,y:H*.22,text:'STAGE '+(o.sNum+1),col:T.bc,life:1,dl:.009});
         } else {
           G.normGates++; boom(S.x,sy,T.ha); sfx('gate');
         }
@@ -1906,25 +1921,59 @@ function drawObj(o, sy) {
     case 'ast': {
       if(!o.alive) break;
       ctx.translate(o.x,sy); ctx.rotate(o.rot);
+      // pulsing danger halo
       if(o.danger){
-        ctx.save(); ctx.globalAlpha=.3+Math.sin(G.tick*.18)*.15;
-        ctx.strokeStyle=T.dc; ctx.lineWidth=2; ctx.beginPath();ctx.arc(0,0,o.r+4,0,Math.PI*2);ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.globalAlpha=.28+Math.sin(G.tick*.18)*.14;
+        ctx.strokeStyle=T.dc; ctx.lineWidth=3;
+        ctx.shadowColor=T.dc; ctx.shadowBlur=20;
+        ctx.beginPath();ctx.arc(0,0,o.r+7,0,Math.PI*2);ctx.stroke(); ctx.restore();
       }
-      ctx.globalAlpha=.12; ctx.fillStyle='#000'; ctx.beginPath();ctx.arc(3,4,o.r,0,Math.PI*2);ctx.fill(); ctx.globalAlpha=1;
-      const astCol=o.danger?T.dc:o.col;
-      ctx.fillStyle=astCol;
-      ctx.beginPath();
-      for(let i=0;i<12;i++){const a=i/12*Math.PI*2,r=o.r*(.48+Math.sin(i*2.3+o.rot)*.32+Math.sin(i*5.1+o.rot*1.7)*.2);i===0?ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r):ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);}
-      ctx.closePath(); ctx.fill();
-      // glowing rim light
+      // deterministic jagged polygon (stable shape per asteroid)
+      const nv=13;
+      const aseed=(Math.round(o.wy*3+o.r*97))|0;
+      const avx=[],avy=[];
+      for(let i=0;i<nv;i++){
+        const a=i/nv*Math.PI*2;
+        const h=o.r*(.52+phash(aseed+i*17)*.36+phash(aseed+i*7+111)*.14);
+        avx.push(Math.cos(a)*h); avy.push(Math.sin(a)*h);
+      }
+      // clip to polygon shape
       ctx.save();
-      ctx.shadowColor=o.danger?T.dc:'rgba(200,215,255,.9)'; ctx.shadowBlur=8;
-      ctx.globalAlpha=.55; ctx.strokeStyle=o.danger?T.dc:'rgba(185,205,255,.68)'; ctx.lineWidth=1.1;
       ctx.beginPath();
-      for(let i=0;i<12;i++){const a=i/12*Math.PI*2,r=o.r*(.48+Math.sin(i*2.3+o.rot)*.32+Math.sin(i*5.1+o.rot*1.7)*.2);i===0?ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r):ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);}
-      ctx.closePath(); ctx.stroke(); ctx.restore();
-      // specular
-      ctx.globalAlpha=.2; ctx.fillStyle='#fff'; ctx.beginPath();ctx.arc(-o.r*.28,-o.r*.32,o.r*.12,0,Math.PI*2);ctx.fill();
+      for(let i=0;i<nv;i++) i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);
+      ctx.closePath(); ctx.clip();
+      // radial gradient fill — light from top-left, dark toward bottom-right
+      const astCol=o.danger?T.dc:o.col;
+      const grd=ctx.createRadialGradient(-o.r*.38,-o.r*.42,o.r*.04,-o.r*.08,-o.r*.12,o.r*1.4);
+      grd.addColorStop(0,'rgba(255,255,255,.28)');
+      grd.addColorStop(.25,astCol);
+      grd.addColorStop(1,'rgba(0,0,0,.78)');
+      ctx.globalAlpha=1; ctx.fillStyle=grd; ctx.fill();
+      // surface craters
+      for(let p=0;p<3;p++){
+        const cx2=(-o.r*.55+phash(aseed+p*31)*o.r*1.1);
+        const cy2=(-o.r*.55+phash(aseed+p*31+7)*o.r*1.1);
+        const cr=o.r*(.06+phash(aseed+p*31+13)*.09);
+        ctx.globalAlpha=.26; ctx.fillStyle='rgba(0,0,0,.85)';
+        ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=.1; ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=.5;
+        ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.restore();
+      // crisp outline
+      ctx.save(); ctx.globalAlpha=.72;
+      ctx.beginPath();
+      for(let i=0;i<nv;i++) i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);
+      ctx.closePath();
+      ctx.strokeStyle=o.danger?T.dc:'rgba(170,200,255,.55)';
+      ctx.lineWidth=o.danger?1.8:1.1;
+      ctx.shadowColor=o.danger?T.dc:'rgba(140,175,255,.5)';
+      ctx.shadowBlur=o.danger?14:6;
+      ctx.stroke(); ctx.restore();
+      // specular highlight top-left
+      ctx.globalAlpha=.5; ctx.fillStyle='rgba(255,255,255,.95)';
+      ctx.beginPath();ctx.arc(-o.r*.33,-o.r*.39,o.r*.08,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
       break;
     }
     case 'wall': {
