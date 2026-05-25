@@ -1003,7 +1003,7 @@ function update() {
     } else if (fp >= 100 && thrustEdge) {
       G.launchCharge++;
       const sp = G.refuelPad;
-      if (sp) { spawnPadMist(sp, 24, true); spawnPadBurst(sp, 10, false); }
+      if (sp) { spawnPadMist(sp, 17, true); spawnPadBurst(sp, 7, false); }
       if (G.launchCharge >= 3) {
         G.launchCharge = 0;
         G.refueling = false;
@@ -1027,7 +1027,7 @@ function update() {
   if (!G.refueling && !G.firstThrust && thrustEdge) {
     const lp = G.objs.find(x => x.t === 'launchpad');
     G.launchCharge++;
-    if (lp) { spawnPadMist(lp, 24, true); spawnPadBurst(lp, 10, false); }
+    if (lp) { spawnPadMist(lp, 17, true); spawnPadBurst(lp, 7, false); }
     if (G.launchCharge >= 3) {
       G.launchCharge = 0;
       G.firstThrust = true;
@@ -1181,7 +1181,7 @@ function update() {
     const lp = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
     if (lp) {
       const t = G.launchMistTick / 300;
-      spawnPadMist(lp, Math.ceil(t * t * 14 + 1), true);
+      spawnPadMist(lp, Math.ceil(t * t * 10 + 1), true);
     }
     G.launchMistTick--;
   }
@@ -1189,19 +1189,19 @@ function update() {
   if (G.landMistTick > 0) {
     if (G.landMistPad) {
       const t = G.landMistTick / 200;
-      spawnPadMist(G.landMistPad, Math.ceil(t * t * 16 + 1), true);
+      spawnPadMist(G.landMistPad, Math.ceil(t * t * 11 + 1), true);
     }
     G.landMistTick--;
   }
-  // stagepad approach: mist starts when ship flame nears pad, max density at contact
-  if (!G.refueling && G.gravOn) {
+  // stagepad approach: only when descending (vy < 0), mist builds from 120wu above pad
+  if (!G.refueling && G.gravOn && S.vy < 0) {
     for (const o of G.objs) {
       if (o.t !== 'stagepad' || !o.alive) continue;
-      const padTop = o.wy + o.h; // top surface of pad in world coords
+      const padTop = o.wy + o.h;
       const distAbove = S.wy - padTop; // positive = ship center above pad surface
-      if (distAbove > 0 && distAbove < 120 && Math.abs(S.x - o.x) < o.w * 1.1) {
+      if (distAbove > 0 && distAbove < 120 && Math.abs(S.x - o.x) < o.w * 1.0) {
         const inten = 1 - distAbove / 120;
-        spawnPadMist(o, Math.round(inten * inten * 20 + 1), distAbove < 60);
+        spawnPadMist(o, Math.round(inten * inten * 14 + 1), distAbove < 60);
       }
     }
   }
@@ -1281,18 +1281,17 @@ function popTxt(x,y,text,col,size,decay) { G.parts.push({type:'txt',x,y,vx:0,vy:
 function spawnPadMist(pad, n, heavy) {
   const hw = pad.w * .5, sy = w2s(pad.wy);
   for (let i = 0; i < n; i++) {
-    const a = heavy ? (.72 + Math.random() * .62) : (.45 + Math.random() * .22);
-    const r = heavy ? (22 + Math.random() * 28) : (8 + Math.random() * 18);
-    const vx = (Math.random()-.5) * (heavy ? 1.4 : .5);
-    const vy = -(heavy ? (0.14 + Math.random() * .55) : (0.06 + Math.random() * .22));
-    const spread = heavy ? 1.1 : .9;
+    const offX = (Math.random()-.5) * hw * (heavy ? 1.1 : .9);
+    const centerFade = 1 - Math.abs(offX) / (hw * 1.1); // 1 at center, ~0 at edge
+    const rBase = heavy ? (16 + Math.random() * 20) : (6 + Math.random() * 13);
+    const r = rBase * (0.35 + 0.65 * centerFade);
+    const aBase = heavy ? (.50 + Math.random() * .34) : (.32 + Math.random() * .16);
+    const a = aBase * (0.45 + 0.55 * centerFade);
+    const vx = (Math.random()-.5) * (heavy ? 1.0 : .4);
+    const vy = -(heavy ? (0.12 + Math.random() * .44) : (0.05 + Math.random() * .18));
     const c = Math.random();
-    const col = c < .4 ? `rgba(210,225,242,${a})` : c < .7 ? `rgba(228,220,215,${a})` : `rgba(242,242,242,${a*.8})`;
-    G.exh.push({
-      x: pad.x + (Math.random()-.5) * hw * spread,
-      y: sy - pad.h,
-      vx, vy, life: 1, r, col
-    });
+    const col = c < .4 ? `rgba(210,225,242,${a.toFixed(2)})` : c < .7 ? `rgba(228,220,215,${a.toFixed(2)})` : `rgba(242,242,242,${(a*.85).toFixed(2)})`;
+    G.exh.push({ x: pad.x + offX, y: sy - pad.h, vx, vy, life: 1, r, col });
   }
 }
 // Big smoke/fire burst — same technique as spawnExh, used for launch & landing
