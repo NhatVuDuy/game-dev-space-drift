@@ -136,8 +136,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 #toast{position:fixed;top:66px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.15);border-radius:13px;padding:5px 13px;font-family:'Exo 2',sans-serif;font-size:12px;font-weight:600;color:#fff;white-space:nowrap;z-index:80;opacity:0;transition:opacity .22s;pointer-events:none;}
 #toast.on{opacity:1;}
 #mhint{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);font-family:'Exo 2',sans-serif;font-size:9px;color:rgba(255,255,255,.18);letter-spacing:2px;pointer-events:none;z-index:15;display:none;}
-#rf-msg{position:fixed;top:47%;left:50%;transform:translate(-50%,-50%);font-family:'Orbitron',monospace;font-size:18px;font-weight:900;letter-spacing:3px;color:#fff;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:10px 16px;z-index:30;display:none;pointer-events:none;}
+#rf-msg{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.9);background:rgba(0,0,8,.72);border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:10px 22px 11px;z-index:30;display:none;pointer-events:none;min-width:190px;text-align:center;opacity:1;transition:opacity .5s;}
 #rf-msg.on{display:block;}
+#rf-msg.fade-out{opacity:0;}
+#rf-bar-wrap{height:3px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:8px;overflow:hidden;}
+#rf-bar-fill{height:100%;border-radius:2px;width:0%;transition:width .12s;background:linear-gradient(to right,#00ff88,#00cfff);}
 
 /* tilt permission overlay */
 #tilt-ov{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.88);display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:all;}
@@ -195,7 +198,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
 <div id="toast"></div>
-<div id="rf-msg">REFUELING... <span id="rf-inline">0%</span></div>
+<div id="rf-msg">
+  <div id="rf-label">⛽ REFUELING &nbsp;<span id="rf-inline">0%</span></div>
+  <div id="rf-bar-wrap"><div id="rf-bar-fill"></div></div>
+</div>
 
 <!-- Calibration overlay -->
 <div id="cal-ov">
@@ -793,6 +799,8 @@ function applyTheme() {
   document.getElementById('sid-c').style.background = aC(T.sa, .5);
   document.querySelectorAll('.hv').forEach(el => el.style.color = T.ha);
   document.querySelectorAll('.td').forEach(d => d.classList.toggle('on', d.dataset.k === AK));
+  const rfFill = document.getElementById('rf-bar-fill');
+  if(rfFill) rfFill.style.background = 'linear-gradient(to right,'+T.fc+','+T.ha+')';
 }
 function buildThemeSel() {
   const row = document.getElementById('tr'); row.innerHTML = '';
@@ -1279,7 +1287,8 @@ function startGame() {
   initAudio(); homeOn = false; hcv.style.display = 'none';
   document.getElementById('sc-ov').classList.remove('on');
   document.getElementById('rf-ov').classList.remove('on');
-  document.getElementById('rf-msg').classList.remove('on');
+  document.getElementById('rf-msg').classList.remove('on','fade-out');
+  if(G&&G._rfFullTimer){clearTimeout(G._rfFullTimer);G._rfFullTimer=null;}
   document.getElementById('ui').classList.add('show');
   // hide all .scr screens
   document.querySelectorAll('.scr').forEach(s => s.classList.remove('on'));
@@ -1380,11 +1389,24 @@ function update() {
     if (G.refuelPad) G.refuelPad.fuelReserve = Math.max(0, reserve - fill);
     S.fuel = Math.min(CFG.FMAX, S.fuel + fill);
     const fp = Math.round(S.fuel);
+    const rfEl = document.getElementById('rf-msg');
+    const rfBar = document.getElementById('rf-bar-fill');
+    const rfLbl = document.getElementById('rf-label');
     document.getElementById('rf-inline').textContent = fp + '%';
-    document.getElementById('rf-msg').classList.add('on');
+    if(rfBar) rfBar.style.width = fp + '%';
+    rfEl.classList.add('on'); rfEl.classList.remove('fade-out');
+    if(rfLbl) rfLbl.textContent = fp >= 100 ? '✓ FUEL FULL' : '⛽ REFUELING  ' + fp + '%';
+    document.getElementById('rf-inline').textContent = '';
+    if (fp >= 100 && !G._rfFullTimer) {
+      G._rfFullTimer = setTimeout(() => {
+        rfEl.classList.add('fade-out');
+        setTimeout(() => { rfEl.classList.remove('on','fade-out'); }, 520);
+        G._rfFullTimer = null;
+      }, 1600);
+    }
     const reserveEmpty = G.refuelPad && G.refuelPad.fuelReserve <= 0.01;
     if (reserveEmpty && fp < 100) {
-      document.getElementById('rf-msg').classList.remove('on');
+      rfEl.classList.remove('on');
       G.refueling = false;
       G.padLaunchGrace = 26;
       toast('Reserve tank depleted. Thrust to continue.', 1600);
