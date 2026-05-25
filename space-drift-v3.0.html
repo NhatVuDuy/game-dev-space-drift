@@ -1322,6 +1322,7 @@ function drawObj(o, sy) {
     }
     case 'bh': {
       if(!o.alive) break;
+      ctx.translate(o.x, sy);
       const bt=G.tick*.022;
       for(let i=3;i>=0;i--){
         const gr=ctx.createRadialGradient(0,0,o.r*.4,0,0,o.r*(2+i*.5));
