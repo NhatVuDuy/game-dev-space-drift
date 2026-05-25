@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">v3.1</div>
+<div id="ver">32</div>
 <div id="toast"></div>
 
 
@@ -1923,56 +1923,71 @@ function drawObj(o, sy) {
       ctx.translate(o.x,sy); ctx.rotate(o.rot);
       // pulsing danger halo
       if(o.danger){
-        ctx.save(); ctx.globalAlpha=.28+Math.sin(G.tick*.18)*.14;
-        ctx.strokeStyle=T.dc; ctx.lineWidth=3;
-        ctx.shadowColor=T.dc; ctx.shadowBlur=20;
-        ctx.beginPath();ctx.arc(0,0,o.r+7,0,Math.PI*2);ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.globalAlpha=.26+Math.sin(G.tick*.18)*.13;
+        ctx.strokeStyle=T.dc; ctx.lineWidth=4;
+        ctx.shadowColor=T.dc; ctx.shadowBlur=24;
+        ctx.beginPath();ctx.arc(0,0,o.r+8,0,Math.PI*2);ctx.stroke(); ctx.restore();
       }
-      // deterministic jagged polygon (stable shape per asteroid)
-      const nv=13;
+      // irregular meteorite silhouette — angle jitter makes it truly lumpy, not star-shaped
+      const nv=15;
       const aseed=(Math.round(o.wy*3+o.r*97))|0;
       const avx=[],avy=[];
       for(let i=0;i<nv;i++){
-        const a=i/nv*Math.PI*2;
-        const h=o.r*(.52+phash(aseed+i*17)*.36+phash(aseed+i*7+111)*.14);
-        avx.push(Math.cos(a)*h); avy.push(Math.sin(a)*h);
+        const base=i/nv*Math.PI*2;
+        const aJit=(phash(aseed+i*53)-.5)*(Math.PI*2/nv)*.45;
+        const h=o.r*(.44+phash(aseed+i*17)*.44+phash(aseed+i*11+53)*.12);
+        avx.push(Math.cos(base+aJit)*h); avy.push(Math.sin(base+aJit)*h);
       }
-      // clip to polygon shape
+      // fill + texture inside clipped shape
       ctx.save();
       ctx.beginPath();
       for(let i=0;i<nv;i++) i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);
       ctx.closePath(); ctx.clip();
-      // radial gradient fill — light from top-left, dark toward bottom-right
+      // strong directional 3D gradient — lit top-left, near-black shadow edge
       const astCol=o.danger?T.dc:o.col;
-      const grd=ctx.createRadialGradient(-o.r*.38,-o.r*.42,o.r*.04,-o.r*.08,-o.r*.12,o.r*1.4);
-      grd.addColorStop(0,'rgba(255,255,255,.28)');
-      grd.addColorStop(.25,astCol);
-      grd.addColorStop(1,'rgba(0,0,0,.78)');
+      const grd=ctx.createRadialGradient(-o.r*.42,-o.r*.46,o.r*.04,-o.r*.05,-o.r*.05,o.r*1.48);
+      grd.addColorStop(0,'rgba(200,188,168,.95)');
+      grd.addColorStop(.18,astCol);
+      grd.addColorStop(.42,'rgba(38,30,20,.9)');
+      grd.addColorStop(.72,'rgba(11,8,5,.97)');
+      grd.addColorStop(1,'rgba(2,1,1,.99)');
       ctx.globalAlpha=1; ctx.fillStyle=grd; ctx.fill();
-      // surface craters
-      for(let p=0;p<3;p++){
-        const cx2=(-o.r*.55+phash(aseed+p*31)*o.r*1.1);
-        const cy2=(-o.r*.55+phash(aseed+p*31+7)*o.r*1.1);
-        const cr=o.r*(.06+phash(aseed+p*31+13)*.09);
-        ctx.globalAlpha=.26; ctx.fillStyle='rgba(0,0,0,.85)';
+      // rocky surface speckle
+      for(let s=0;s<16;s++){
+        const sx=-o.r*.85+phash(aseed+s*41)*o.r*1.7;
+        const sy2=-o.r*.85+phash(aseed+s*41+5)*o.r*1.7;
+        const sr=o.r*(.009+phash(aseed+s*41+11)*.02);
+        ctx.globalAlpha=.08+phash(aseed+s*41+17)*.14;
+        ctx.fillStyle=phash(aseed+s*41+23)>.42?'rgba(0,0,0,.8)':'rgba(238,228,212,.9)';
+        ctx.beginPath();ctx.arc(sx,sy2,sr,0,Math.PI*2);ctx.fill();
+      }
+      // craters: dark pit + lighter floor + lit rim arc
+      const nc=3+(aseed%2);
+      for(let p=0;p<nc;p++){
+        const cx2=-o.r*.58+phash(aseed+p*29)*o.r*1.16;
+        const cy2=-o.r*.58+phash(aseed+p*29+7)*o.r*1.16;
+        const cr=o.r*(.08+phash(aseed+p*29+13)*.1);
+        ctx.globalAlpha=.62; ctx.fillStyle='rgba(0,0,0,.86)';
         ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=.1; ctx.strokeStyle='rgba(255,255,255,.4)'; ctx.lineWidth=.5;
-        ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.stroke();
+        ctx.globalAlpha=.22; ctx.fillStyle='rgba(82,63,42,.55)';
+        ctx.beginPath();ctx.arc(cx2-cr*.25,cy2-cr*.25,cr*.55,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=.2; ctx.strokeStyle='rgba(208,188,158,.72)'; ctx.lineWidth=.6;
+        ctx.beginPath();ctx.arc(cx2,cy2,cr,Math.PI*.95,Math.PI*1.85);ctx.stroke();
       }
       ctx.restore();
-      // crisp outline
-      ctx.save(); ctx.globalAlpha=.72;
+      // silhouette rim stroke
+      ctx.save(); ctx.globalAlpha=.55;
       ctx.beginPath();
       for(let i=0;i<nv;i++) i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);
       ctx.closePath();
-      ctx.strokeStyle=o.danger?T.dc:'rgba(170,200,255,.55)';
-      ctx.lineWidth=o.danger?1.8:1.1;
-      ctx.shadowColor=o.danger?T.dc:'rgba(140,175,255,.5)';
-      ctx.shadowBlur=o.danger?14:6;
+      ctx.strokeStyle=o.danger?T.dc:'rgba(108,98,85,.72)';
+      ctx.lineWidth=o.danger?2:1.2;
+      ctx.shadowColor=o.danger?T.dc:'rgba(138,125,108,.35)';
+      ctx.shadowBlur=o.danger?16:3;
       ctx.stroke(); ctx.restore();
-      // specular highlight top-left
-      ctx.globalAlpha=.5; ctx.fillStyle='rgba(255,255,255,.95)';
-      ctx.beginPath();ctx.arc(-o.r*.33,-o.r*.39,o.r*.08,0,Math.PI*2);ctx.fill();
+      // specular flare top-left
+      ctx.globalAlpha=.55; ctx.fillStyle='rgba(255,250,236,.9)';
+      ctx.beginPath();ctx.arc(-o.r*.35,-o.r*.41,o.r*.065,0,Math.PI*2);ctx.fill();
       ctx.globalAlpha=1;
       break;
     }
