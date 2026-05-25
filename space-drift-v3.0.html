@@ -1038,7 +1038,7 @@ function update() {
       // bolt particle update — runs regardless of gravOn
       if (!o.bolts) o.bolts = [];
       o.bolts = o.bolts.filter(b => { b.life -= b.decay; return b.life > 0; });
-      if (o.bolts.length < 3 && sy > -40 && sy < H + 40 && Math.random() < .2) spawnWallBolt(o);
+      if (o.bolts.length < 5 && sy > -40 && sy < H + 40 && Math.random() < .35) spawnWallBolt(o);
       if (!G.gravOn || G.refueling) continue;
       const ssy=w2s(S.wy);
       if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);}else{doCrash();return;} }
@@ -1168,19 +1168,19 @@ function spawnWallBolt(o) {
   const side = (o.gx > 4 && (W - o.gx - o.gw < 4 || Math.random() < .5)) ? 'L' : 'R';
   const sw = side === 'L' ? o.gx : W - o.gx - o.gw;
   if (sw < 5) return;
-  const vh = o.h + 7;
-  const maxJ = Math.min(sw * .28, 9);
+  const maxDy = Math.min(o.h * .55, 5); // vertical jitter around wall centre
   const nPts = 5 + Math.floor(Math.random() * 5);
   const pts = [];
   for (let i = 0; i <= nPts; i++) {
-    const t = i / nPts;
-    const dx = (i === 0 || i === nPts) ? 0 : (Math.random() - .5) * 2 * maxJ;
-    pts.push({ t, dx });
+    const t = i / nPts; // 0..1 = left-to-right across the slab
+    const dy = (i === 0 || i === nPts) ? 0 : (Math.random() - .5) * 2 * maxDy;
+    pts.push({ t, dy });
   }
-  const branch = Math.random() < .45 ? {
+  // branch shoots vertically from a mid-point
+  const branch = Math.random() < .4 ? {
     idx: 1 + Math.floor(Math.random() * (nPts - 1)),
-    dx: (Math.random() < .5 ? 1 : -1) * (5 + Math.random() * 11),
-    dy: (Math.random() - .5) * 5
+    dx: (Math.random() - .5) * 8,
+    dy: (Math.random() < .5 ? -1 : 1) * (6 + Math.random() * 12)
   } : null;
   o.bolts.push({ pts, branch, side, life: 1, decay: .1 + Math.random() * .1 });
 }
@@ -1363,56 +1363,19 @@ function drawObj(o, sy) {
     }
     case 'wall': {
       if(!o.alive) break;
-      const tk = G.tick;
-      const h = o.h;
-      const vh = h + 7;
       const hue = 185 + o.hue * 40;
-      const pulse = .6 + .4 * Math.sin(tk * .09);
-
-      const drawSlab = (x, w) => {
-        if (w < 2) return;
-        const isLeft = x === 0;
-        const ix = isLeft ? x + w : x;
-        // Core fill with outer-edge fade into space
-        const cg = ctx.createLinearGradient(x, 0, x + w, 0);
-        const fs = Math.min(.35, 22 / w);
-        if (isLeft) { cg.addColorStop(0,`hsla(${hue},65%,5%,0)`); cg.addColorStop(fs,`hsla(${hue},65%,5%,.93)`); cg.addColorStop(1,`hsla(${hue},65%,5%,.93)`); }
-        else        { cg.addColorStop(0,`hsla(${hue},65%,5%,.93)`); cg.addColorStop(1-fs,`hsla(${hue},65%,5%,.93)`); cg.addColorStop(1,`hsla(${hue},65%,5%,0)`); }
-        ctx.fillStyle=cg; ctx.fillRect(x,sy-vh,w,vh);
-        // Top & bottom vertical glow
-        const vg=ctx.createLinearGradient(0,sy-vh,0,sy);
-        vg.addColorStop(0,`hsla(${hue},100%,66%,${.72*pulse})`); vg.addColorStop(.28,`hsla(${hue},100%,35%,${.1*pulse})`);
-        vg.addColorStop(.72,`hsla(${hue},100%,35%,${.1*pulse})`); vg.addColorStop(1,`hsla(${hue},100%,66%,${.72*pulse})`);
-        ctx.fillStyle=vg; ctx.fillRect(x,sy-vh,w,vh);
-        // Inner edge glow
-        const gw2=Math.min(w,26);
-        const eg=ctx.createLinearGradient(isLeft?ix-gw2:ix,0,isLeft?ix:ix+gw2,0);
-        eg.addColorStop(isLeft?1:0,`hsla(${hue},100%,60%,${.52*pulse})`); eg.addColorStop(isLeft?0:1,'transparent');
-        ctx.fillStyle=eg; ctx.fillRect(isLeft?ix-gw2:ix,sy-vh,gw2,vh);
-        // Inner edge soft line
-        const el=ctx.createLinearGradient(ix-2,0,ix+2,0);
-        el.addColorStop(isLeft?0:1,'transparent'); el.addColorStop(.5,`hsla(${hue},100%,92%,${pulse})`); el.addColorStop(isLeft?1:0,'transparent');
-        ctx.fillStyle=el; ctx.fillRect(ix-2,sy-vh,4,vh);
-        // Sin-wave scan
-        const waveY=sy-vh*(.08+.84*(.5+.5*Math.sin(tk*.046)));
-        const wg=ctx.createLinearGradient(0,waveY-5,0,waveY+5);
-        wg.addColorStop(0,'transparent'); wg.addColorStop(.5,`hsla(${hue+8},100%,92%,${.15*pulse})`); wg.addColorStop(1,'transparent');
-        ctx.fillStyle=wg; ctx.fillRect(x,waveY-5,w,10);
-      };
-
-      if (o.gx > 2) drawSlab(0, o.gx);
-      const rw = W - (o.gx + o.gw); if (rw > 2) drawSlab(o.gx + o.gw, rw);
-
-      // Lightning bolt particles — same pattern as G.exh
+      const midY = sy - o.h * .5; // vertical centre of the wall hitbox
       if (o.bolts) {
         for (const b of o.bolts) {
-          const bix = b.side === 'L' ? o.gx : o.gx + o.gw;
+          const x0 = b.side === 'L' ? 0 : o.gx + o.gw;
+          const xW = b.side === 'L' ? o.gx : W - o.gx - o.gw;
+          if (xW < 2) continue;
           ctx.save();
-          ctx.globalAlpha = b.life * b.life; // quadratic: flash bright, snap fade
+          ctx.globalAlpha = b.life * b.life;
           ctx.beginPath();
           for (let i = 0; i < b.pts.length; i++) {
-            const px = bix + b.pts[i].dx;
-            const py = sy - vh + b.pts[i].t * vh;
+            const px = x0 + b.pts[i].t * xW;
+            const py = midY + b.pts[i].dy;
             i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
           }
           // glow pass
@@ -1426,13 +1389,13 @@ function drawObj(o, sy) {
           ctx.lineWidth = 1;
           ctx.shadowBlur = 0;
           ctx.stroke();
-          // branch
+          // branch (vertical offshoot)
           if (b.branch) {
             const bp = b.pts[b.branch.idx];
-            const bpx = bix + bp.dx, bpy = sy - vh + bp.t * vh;
+            const bpx = x0 + bp.t * xW, bpy = midY + bp.dy;
             ctx.beginPath(); ctx.moveTo(bpx, bpy);
             ctx.lineTo(bpx + b.branch.dx, bpy + b.branch.dy);
-            ctx.strokeStyle = `hsla(${hue+20},100%,80%,.65)`;
+            ctx.strokeStyle = `hsla(${hue+20},100%,80%,.6)`;
             ctx.lineWidth = 1; ctx.stroke();
           }
           ctx.restore();
