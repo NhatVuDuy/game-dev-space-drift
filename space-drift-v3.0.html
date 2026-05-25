@@ -1341,60 +1341,76 @@ function drawObj(o, sy) {
       if(!o.alive) break;
       const tk = G.tick;
       const h = o.h;
-      const vh = h + 7; // visual height slightly taller than hitbox
-      const hue = 185 + o.hue * 40; // cyan → teal → blue
-      const pulse = .58 + .42 * Math.sin(tk * .09);
-      // deterministic "random" that updates every 3 frames — creates flicker illusion
-      const seeded = (n) => Math.sin(n * 127.1 + Math.floor(tk / 3) * .97) * .5 + .5;
+      const vh = h + 7;
+      const hue = 185 + o.hue * 40;
+      const pulse = .6 + .4 * Math.sin(tk * .09);
+      // continuous (no floor) — sparks drift smoothly
+      const sd = (n) => Math.sin(n * 127.1 + tk * .038) * .5 + .5;
 
       const drawSlab = (x, w) => {
         if (w < 2) return;
         const isLeft = x === 0;
-        const ix = isLeft ? x + w : x; // gap-facing inner edge
+        const ix = isLeft ? x + w : x;
 
-        // Dark energy core
-        ctx.fillStyle = `hsla(${hue},65%,5%,.94)`;
-        ctx.fillRect(x, sy - vh, w, vh);
+        // Core fill with outer-edge horizontal fade into space
+        const cg = ctx.createLinearGradient(x, 0, x + w, 0);
+        const fadeStop = Math.min(.35, 22 / w);
+        if (isLeft) {
+          cg.addColorStop(0, `hsla(${hue},65%,5%,0)`);
+          cg.addColorStop(fadeStop, `hsla(${hue},65%,5%,.93)`);
+          cg.addColorStop(1, `hsla(${hue},65%,5%,.93)`);
+        } else {
+          cg.addColorStop(0, `hsla(${hue},65%,5%,.93)`);
+          cg.addColorStop(1 - fadeStop, `hsla(${hue},65%,5%,.93)`);
+          cg.addColorStop(1, `hsla(${hue},65%,5%,0)`);
+        }
+        ctx.fillStyle = cg; ctx.fillRect(x, sy - vh, w, vh);
 
-        // Top & bottom glowing bars
-        ctx.fillStyle = `hsla(${hue},100%,68%,${.78 * pulse})`;
-        ctx.fillRect(x, sy - vh, w, 2);
-        ctx.fillRect(x, sy - 1.5, w, 2);
+        // Top & bottom glow as vertical gradient (soft, not hard bars)
+        const vg = ctx.createLinearGradient(0, sy - vh, 0, sy);
+        vg.addColorStop(0,   `hsla(${hue},100%,66%,${.72 * pulse})`);
+        vg.addColorStop(.28, `hsla(${hue},100%,35%,${.1 * pulse})`);
+        vg.addColorStop(.72, `hsla(${hue},100%,35%,${.1 * pulse})`);
+        vg.addColorStop(1,   `hsla(${hue},100%,66%,${.72 * pulse})`);
+        ctx.fillStyle = vg; ctx.fillRect(x, sy - vh, w, vh);
 
-        // Inner edge glow fade
-        const gw2 = Math.min(w, 24);
+        // Inner edge glow
+        const gw2 = Math.min(w, 26);
         const eg = ctx.createLinearGradient(isLeft ? ix - gw2 : ix, 0, isLeft ? ix : ix + gw2, 0);
-        eg.addColorStop(isLeft ? 1 : 0, `hsla(${hue},100%,62%,${.58 * pulse})`);
+        eg.addColorStop(isLeft ? 1 : 0, `hsla(${hue},100%,60%,${.52 * pulse})`);
         eg.addColorStop(isLeft ? 0 : 1, 'transparent');
         ctx.fillStyle = eg; ctx.fillRect(isLeft ? ix - gw2 : ix, sy - vh, gw2, vh);
 
-        // Bright inner edge line
-        ctx.strokeStyle = `hsla(${hue},100%,90%,${pulse})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(ix, sy - vh); ctx.lineTo(ix, sy); ctx.stroke();
+        // Inner edge line — soft gradient rect instead of hard stroke
+        const el = ctx.createLinearGradient(ix - 2, 0, ix + 2, 0);
+        el.addColorStop(isLeft ? 0 : 1, 'transparent');
+        el.addColorStop(.5, `hsla(${hue},100%,92%,${pulse})`);
+        el.addColorStop(isLeft ? 1 : 0, 'transparent');
+        ctx.fillStyle = el; ctx.fillRect(ix - 2, sy - vh, 4, vh);
 
-        // Scan line flowing upward
-        const scanY = sy - (tk * 2) % (vh + 4);
-        ctx.globalAlpha = .26 * pulse;
-        ctx.fillStyle = `hsla(${hue + 10},100%,94%,1)`;
-        ctx.fillRect(x, scanY - 1, w, 2);
-        ctx.globalAlpha = 1;
+        // Two sin-wave scans — no modulo wrap, just oscillate back and forth
+        for (let sw = 0; sw < 2; sw++) {
+          const waveY = sy - vh * (.08 + .84 * (.5 + .5 * Math.sin(tk * .046 + sw * Math.PI)));
+          const wg = ctx.createLinearGradient(0, waveY - 5, 0, waveY + 5);
+          wg.addColorStop(0, 'transparent');
+          wg.addColorStop(.5, `hsla(${hue + 8},100%,92%,${.18 * pulse})`);
+          wg.addColorStop(1, 'transparent');
+          ctx.fillStyle = wg; ctx.fillRect(x, waveY - 5, w, 10);
+        }
 
-        // Arc sparks along inner edge
+        // Smooth arc sparks — sd() uses tk*.038 so they drift, not teleport
         const nSparks = Math.max(3, Math.ceil(w / 16));
         for (let i = 0; i < nSparks; i++) {
-          const bright = seeded(i * 2.9 + x * .007);
-          if (bright < .4) continue;
-          const ny = sy - vh * .08 - vh * .84 * seeded(i * 5.3 + x * .013);
-          const alpha = (bright - .4) / .6;
-          // node dot
-          ctx.fillStyle = `hsla(${hue + 15},100%,96%,${alpha})`;
-          ctx.beginPath(); ctx.arc(ix, ny, 1.8, 0, Math.PI * 2); ctx.fill();
-          // spark zap
-          if (bright > .68) {
-            const sLen = 4 + seeded(i * 7.1) * 10;
-            const sAngle = (isLeft ? .5 : Math.PI - .5) + (seeded(i * 3.7) - .5) * 1.4;
-            ctx.strokeStyle = `hsla(${hue},100%,88%,${(bright - .68) * 3.2})`;
+          const bright = sd(i * 2.9 + x * .007);
+          if (bright < .38) continue;
+          const ny = sy - vh * .08 - vh * .84 * sd(i * 5.3 + x * .013);
+          const alpha = (bright - .38) / .62;
+          ctx.fillStyle = `hsla(${hue + 15},100%,96%,${alpha * .85})`;
+          ctx.beginPath(); ctx.arc(ix, ny, 1.4 + bright * .9, 0, Math.PI * 2); ctx.fill();
+          if (bright > .7) {
+            const sLen = 4 + sd(i * 7.1) * 9;
+            const sAngle = (isLeft ? .48 : Math.PI - .48) + (sd(i * 3.7) - .5) * 1.3;
+            ctx.strokeStyle = `hsla(${hue},100%,86%,${(bright - .7) * 2.8})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(ix, ny);
