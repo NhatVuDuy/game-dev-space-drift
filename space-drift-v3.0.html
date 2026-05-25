@@ -712,17 +712,19 @@ function doBlackHoleWarp(bh) {
   if (!G || !G.ship.alive || G.bhWarping) return;
   G.bhWarping = true;
   if (!bh || bh.dir === 'back') {
-    // Black hole = death
-    G.bhFlash = 60; G.bhFlashFwd = false;
+    // Black hole = shrink spiralling into hole, then crash
+    G.bhWarpPhase = 'shrink';
+    G.bhWarpScale = 1;
+    G.bhWarpTarget = bh || null;
+    G.bhCrashShrink = true;
     sfx('warp');
-    setTimeout(()=>{ if(G && G.ship.alive) doCrash(); }, 340);
-    setTimeout(()=>{ if(G) G.bhWarping=false; }, 900);
     return;
   }
   // Wormhole = shrink → teleport → grow
   G.bhWarpPhase = 'shrink';
   G.bhWarpScale = 1;
   G.bhWarpTarget = bh;
+  G.bhCrashShrink = false;
   sfx('warp');
 }
 function executeWormholeWarp(bh) {
@@ -735,14 +737,12 @@ function executeWormholeWarp(bh) {
   newWy = findClearWy(newWy, fwd ? -1 : 1);
   S.wy = newWy; S.vx = (Math.random()-.5)*2; S.vy = fwd ? -(1+Math.random()*.5) : (.5+Math.random());
   G.cam = Math.max(0, newWy - H*.5);
-  G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
   if (fwd) {
+    G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
     genWorld(newWy + 2200);
-  } else {
-    G.objs.forEach(o=>{ if(o.t==='gate'&&o.wy>=newWy-100) o.passed=false; });
-    G.normGates=0; document.getElementById('hgate').textContent='0';
+    document.getElementById('hstage').textContent = G.stgN;
   }
-  document.getElementById('hstage').textContent = G.stgN;
+  // backward: keep all state intact (stage, gates, pads) — just relocate ship+camera
   G.bhFlash = 52; G.bhFlashFwd = fwd;
   G.warpGraceTick = G.tick + 65;
   toast(fwd?`🌀 WORMHOLE +${stages} STAGE${stages>1?'S':''}!`:`🌀 WORMHOLE -${stages} STAGE${stages>1?'S':''}!`, 3000);
@@ -929,7 +929,7 @@ function startGame() {
     padWY: shipWY - SR - 2,
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
-    landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false,
+    landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -958,10 +958,28 @@ function update() {
   if (!G || !G.ship.alive) return;
   G.tick++;
   G.bhNear = 0; G.bhNearFwd = false;
-  // wormhole scale animation
+  // shrink animation (both BH crash and wormhole warp)
   if (G.bhWarpPhase === 'shrink') {
-    G.bhWarpScale = Math.max(0, G.bhWarpScale - 0.11);
-    if (G.bhWarpScale <= 0) { executeWormholeWarp(G.bhWarpTarget); G.bhWarpPhase = 'grow'; }
+    const S = G.ship;
+    const shrinkRate = G.bhCrashShrink ? 0.08 : 0.11; // slower shrink for BH for drama
+    G.bhWarpScale = Math.max(0, G.bhWarpScale - shrinkRate);
+    if (G.bhCrashShrink && G.bhWarpTarget) {
+      // spiral ship toward BH center while shrinking
+      const dx = G.bhWarpTarget.x - S.x, dy = G.bhWarpTarget.wy - S.wy;
+      const dist = Math.hypot(dx, dy);
+      const pull = 1.8 * (1 - G.bhWarpScale);
+      if (dist > 1) { S.x += dx / dist * pull; S.wy += dy / dist * pull * .6; }
+      S.angle += 0.18; // spin
+    }
+    if (G.bhWarpScale <= 0) {
+      if (G.bhCrashShrink) {
+        G.bhCrashShrink = false; G.bhWarpPhase = null; G.bhWarping = false;
+        G.bhFlash = 40; G.bhFlashFwd = false;
+        doCrash();
+      } else {
+        executeWormholeWarp(G.bhWarpTarget); G.bhWarpPhase = 'grow';
+      }
+    }
     return;
   }
   if (G.bhWarpPhase === 'grow') {
@@ -1199,7 +1217,7 @@ function update() {
       if (o.t !== 'stagepad' || !o.alive) continue;
       const padTop = o.wy + o.h;
       const distAbove = S.wy - padTop; // positive = ship center above pad surface
-      if (distAbove > 0 && distAbove < 120 && Math.abs(S.x - o.x) < o.w * 1.0) {
+      if (distAbove > 0 && distAbove < 120 && Math.abs(S.x - o.x) < o.w * 0.5) {
         const inten = 1 - distAbove / 120;
         spawnPadMist(o, Math.round(inten * inten * 14 + 1), distAbove < 60);
       }
@@ -1239,7 +1257,7 @@ function startRefuel(pad) {
   document.getElementById('rf-msg').classList.add('on');
   document.getElementById('rf-inline').textContent = Math.round(G.ship.fuel) + '%';
   spawnPadBurst(pad, 28, false); // impact dust puff
-  G.landMistTick = 200;
+  G.landMistTick = 90;  // ~1.5s of new particles, then particles fade on their own
   G.landMistPad = pad;
 }
 function rfLaunch() {
