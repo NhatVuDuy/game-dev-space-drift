@@ -888,7 +888,7 @@ function genWorld(upTo) {
     if (stg>=2 && Math.random()<.28+stg*.02) G.objs.push(mkWall(alt+25,stg));
     if (stg>=2 && Math.random()<.07+stg*.012) {
       const bhWy = alt+80+Math.random()*180;
-      const tooClose = G.objs.some(x=>(x.t==='gate'||x.t==='wall'||x.t==='stagepad')&&Math.abs(x.wy-bhWy)<280);
+      const tooClose = G.objs.some(x=>(x.t==='gate'||x.t==='stagepad')&&Math.abs(x.wy-bhWy)<130);
       if (!tooClose) G.objs.push(mkBlackHole(bhWy));
     }
     if (Math.random()<.52) G.objs.push(mkFuel(alt+Math.random()*120));
@@ -1230,11 +1230,11 @@ function spawnPadMist(pad, n) {
     G.exh.push({
       x: pad.x + (Math.random()-.5) * hw * .9,
       y: sy - pad.h,
-      vx: (Math.random()-.5) * .42,
-      vy: -(0.05 + Math.random() * .17),
+      vx: (Math.random()-.5) * .5,
+      vy: -(0.06 + Math.random() * .22),
       life: 1,
-      r: 11 + Math.random() * 24,
-      col: `rgba(190,215,240,${.08+Math.random()*.07})`
+      r: 8 + Math.random() * 18,
+      col: Math.random()<.5 ? 'rgba(210,225,240,.55)' : 'rgba(225,222,215,.48)'
     });
   }
 }
