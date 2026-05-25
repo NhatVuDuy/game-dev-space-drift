@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">32</div>
+<div id="ver">33</div>
 <div id="toast"></div>
 
 
@@ -1928,66 +1928,51 @@ function drawObj(o, sy) {
         ctx.shadowColor=T.dc; ctx.shadowBlur=24;
         ctx.beginPath();ctx.arc(0,0,o.r+8,0,Math.PI*2);ctx.stroke(); ctx.restore();
       }
-      // irregular meteorite silhouette — angle jitter makes it truly lumpy, not star-shaped
-      const nv=15;
-      const aseed=(Math.round(o.wy*3+o.r*97))|0;
+      // irregular meteorite silhouette — angle+amplitude jitter for lumpy rock shape
+      const nv=14, aseed=(Math.round(o.wy*3+o.r*97))|0;
       const avx=[],avy=[];
       for(let i=0;i<nv;i++){
         const base=i/nv*Math.PI*2;
-        const aJit=(phash(aseed+i*53)-.5)*(Math.PI*2/nv)*.45;
-        const h=o.r*(.44+phash(aseed+i*17)*.44+phash(aseed+i*11+53)*.12);
+        const aJit=(phash(aseed+i*53)-.5)*(Math.PI*2/nv)*.4;
+        const h=o.r*(.46+phash(aseed+i*17)*.42+phash(aseed+i*11+53)*.12);
         avx.push(Math.cos(base+aJit)*h); avy.push(Math.sin(base+aJit)*h);
       }
-      // fill + texture inside clipped shape
-      ctx.save();
-      ctx.beginPath();
-      for(let i=0;i<nv;i++) i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);
-      ctx.closePath(); ctx.clip();
-      // strong directional 3D gradient — lit top-left, near-black shadow edge
+      // helper — rebuilds polygon path each time (ctx.fill/stroke clears the path)
+      const astPoly=()=>{ctx.beginPath();for(let i=0;i<nv;i++)i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);ctx.closePath();};
       const astCol=o.danger?T.dc:o.col;
-      const grd=ctx.createRadialGradient(-o.r*.42,-o.r*.46,o.r*.04,-o.r*.05,-o.r*.05,o.r*1.48);
-      grd.addColorStop(0,'rgba(200,188,168,.95)');
+      // dark base fill (covers the whole polygon in near-black first)
+      ctx.globalAlpha=1; ctx.shadowBlur=0;
+      astPoly(); ctx.fillStyle='rgba(7,5,3,1)'; ctx.fill();
+      // 3D directional gradient — ctx.fill() with path naturally clips to polygon, no ctx.clip() needed
+      const grd=ctx.createRadialGradient(-o.r*.42,-o.r*.46,o.r*.04,-o.r*.05,-o.r*.05,o.r*1.45);
+      grd.addColorStop(0,'rgba(200,188,168,.92)');
       grd.addColorStop(.18,astCol);
-      grd.addColorStop(.42,'rgba(38,30,20,.9)');
-      grd.addColorStop(.72,'rgba(11,8,5,.97)');
+      grd.addColorStop(.44,'rgba(38,30,20,.9)');
       grd.addColorStop(1,'rgba(2,1,1,.99)');
-      ctx.globalAlpha=1; ctx.fillStyle=grd; ctx.fill();
-      // rocky surface speckle
-      for(let s=0;s<16;s++){
-        const sx=-o.r*.85+phash(aseed+s*41)*o.r*1.7;
-        const sy2=-o.r*.85+phash(aseed+s*41+5)*o.r*1.7;
-        const sr=o.r*(.009+phash(aseed+s*41+11)*.02);
-        ctx.globalAlpha=.08+phash(aseed+s*41+17)*.14;
-        ctx.fillStyle=phash(aseed+s*41+23)>.42?'rgba(0,0,0,.8)':'rgba(238,228,212,.9)';
-        ctx.beginPath();ctx.arc(sx,sy2,sr,0,Math.PI*2);ctx.fill();
-      }
-      // craters: dark pit + lighter floor + lit rim arc
-      const nc=3+(aseed%2);
+      astPoly(); ctx.fillStyle=grd; ctx.fill();
+      // craters — centered within polygon so they stay mostly inside the shape
+      const nc=2+(aseed%2);
       for(let p=0;p<nc;p++){
-        const cx2=-o.r*.58+phash(aseed+p*29)*o.r*1.16;
-        const cy2=-o.r*.58+phash(aseed+p*29+7)*o.r*1.16;
-        const cr=o.r*(.08+phash(aseed+p*29+13)*.1);
-        ctx.globalAlpha=.62; ctx.fillStyle='rgba(0,0,0,.86)';
+        const cx2=(phash(aseed+p*29)-.5)*o.r*.9;
+        const cy2=(phash(aseed+p*29+7)-.5)*o.r*.9;
+        const cr=o.r*(.07+phash(aseed+p*29+13)*.09);
+        ctx.globalAlpha=.55; ctx.fillStyle='rgba(0,0,0,.88)';
         ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=.22; ctx.fillStyle='rgba(82,63,42,.55)';
-        ctx.beginPath();ctx.arc(cx2-cr*.25,cy2-cr*.25,cr*.55,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=.2; ctx.strokeStyle='rgba(208,188,158,.72)'; ctx.lineWidth=.6;
-        ctx.beginPath();ctx.arc(cx2,cy2,cr,Math.PI*.95,Math.PI*1.85);ctx.stroke();
+        ctx.globalAlpha=.18; ctx.fillStyle='rgba(80,60,40,.5)';
+        ctx.beginPath();ctx.arc(cx2-cr*.22,cy2-cr*.22,cr*.5,0,Math.PI*2);ctx.fill();
+        ctx.globalAlpha=.18; ctx.strokeStyle='rgba(205,185,155,.7)'; ctx.lineWidth=.5;
+        ctx.beginPath();ctx.arc(cx2,cy2,cr,Math.PI*.9,Math.PI*1.85);ctx.stroke();
       }
-      ctx.restore();
-      // silhouette rim stroke
-      ctx.save(); ctx.globalAlpha=.55;
-      ctx.beginPath();
-      for(let i=0;i<nv;i++) i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);
-      ctx.closePath();
+      // silhouette outline
+      ctx.globalAlpha=.55;
       ctx.strokeStyle=o.danger?T.dc:'rgba(108,98,85,.72)';
       ctx.lineWidth=o.danger?2:1.2;
       ctx.shadowColor=o.danger?T.dc:'rgba(138,125,108,.35)';
       ctx.shadowBlur=o.danger?16:3;
-      ctx.stroke(); ctx.restore();
+      astPoly(); ctx.stroke(); ctx.shadowBlur=0;
       // specular flare top-left
       ctx.globalAlpha=.55; ctx.fillStyle='rgba(255,250,236,.9)';
-      ctx.beginPath();ctx.arc(-o.r*.35,-o.r*.41,o.r*.065,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(-o.r*.34,-o.r*.40,o.r*.065,0,Math.PI*2);ctx.fill();
       ctx.globalAlpha=1;
       break;
     }
