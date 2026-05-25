@@ -708,23 +708,36 @@ function toggleGyroInvert() {
   localStorage.setItem('sd_gyro_invert', gyroInvert === -1 ? '1' : '0');
   document.getElementById('cal-inv').classList.toggle('on', gyroInvert === -1);
 }
-function doBlackHoleWarp() {
+function doBlackHoleWarp(bh) {
   if (!G || !G.ship.alive || G.bhWarping) return;
   G.bhWarping = true;
   const S = G.ship;
-  const stagesBack = 1 + Math.floor(Math.random() * 5);
-  const warpDist = stagesBack * 3 * CFG.GSPC;
-  const newWy = Math.max(200, S.wy - warpDist);
-  S.wy = newWy; S.vx = (Math.random()-.5)*3; S.vy = .5+Math.random();
-  G.cam = Math.max(0, newWy - H*.5);
-  G.objs.forEach(o => { if (o.t==='gate' && o.wy >= newWy-100) o.passed = false; });
-  G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
-  G.normGates = 0;
-  document.getElementById('hstage').textContent = G.stgN;
-  document.getElementById('hgate').textContent = '0';
-  G.bhFlash = 48;
-  sfx('warp');
-  toast(`🕳️ WARPED BACK ${stagesBack} STAGE${stagesBack>1?'S':''}!`, 3000);
+  const fwd = bh && bh.dir === 'fwd';
+  const stages = 1 + Math.floor(Math.random() * (fwd ? 3 : 5));
+  const warpDist = stages * 3 * CFG.GSPC;
+  if (fwd) {
+    const newWy = S.wy + warpDist;
+    S.wy = newWy; S.vx = (Math.random()-.5)*2; S.vy = -(1+Math.random()*.5);
+    G.cam = Math.max(0, newWy - H*.5);
+    G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
+    genWorld(newWy + 2200);
+    document.getElementById('hstage').textContent = G.stgN;
+    G.bhFlash = 52; G.bhFlashFwd = true;
+    sfx('warp');
+    toast(`🌀 WORMHOLE! +${stages} STAGE${stages>1?'S':''}!`, 3000);
+  } else {
+    const newWy = Math.max(200, S.wy - warpDist);
+    S.wy = newWy; S.vx = (Math.random()-.5)*3; S.vy = .5+Math.random();
+    G.cam = Math.max(0, newWy - H*.5);
+    G.objs.forEach(o => { if (o.t==='gate' && o.wy >= newWy-100) o.passed = false; });
+    G.stgN = Math.max(1, Math.floor(newWy/(3*CFG.GSPC))+1);
+    G.normGates = 0;
+    document.getElementById('hstage').textContent = G.stgN;
+    document.getElementById('hgate').textContent = '0';
+    G.bhFlash = 52; G.bhFlashFwd = false;
+    sfx('warp');
+    toast(`🕳️ WARPED BACK ${stages} STAGE${stages>1?'S':''}!`, 3000);
+  }
   setTimeout(()=>{ if(G) G.bhWarping=false; }, 800);
 }
 
@@ -848,7 +861,7 @@ function mkStagePad(wy, stageNo) {
 }
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
 function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random()}; }
-function mkBlackHole(wy) { return {t:'bh',wy,x:W*.15+Math.random()*W*.7,r:27+Math.random()*10,pullR:115+Math.random()*55,alive:1}; }
+function mkBlackHole(wy) { return {t:'bh',wy,x:W*.15+Math.random()*W*.7,r:27+Math.random()*10,pullR:130+Math.random()*70,alive:1,dir:Math.random()<.4?'fwd':'back'}; }
 
 function genWorld(upTo) {
   let alt = G.lastGen + 130;
@@ -894,7 +907,7 @@ function startGame() {
     refuelPad:null,
     padLaunchGrace:0,
     padWY: shipWY - SR - 2,
-    bhFlash:0, bhWarping:false,
+    bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -922,6 +935,7 @@ function stopOverlayDraw() { cancelAnimationFrame(overlayRaf); }
 function update() {
   if (!G || !G.ship.alive) return;
   G.tick++;
+  G.bhNear = 0; G.bhNearFwd = false;
   const S = G.ship, R = SR;
   S.prevWy = S.wy;
   let tx;
@@ -1040,9 +1054,11 @@ function update() {
       if (!G.gravOn || G.refueling) continue;
       const dx=o.x-S.x, dy=o.wy-S.wy, dist=Math.hypot(dx,dy);
       if (dist<o.pullR) {
-        const f=0.065*Math.pow(1-dist/o.pullR,2);
+        const t=1-dist/o.pullR;
+        const f=0.09*t*t;
         S.vx+=(dx/dist)*f; S.vy+=(dy/dist)*f;
-        if (dist<o.r && !G.bhWarping) { doBlackHoleWarp(); return; }
+        if (t > G.bhNear) { G.bhNear = t; G.bhNearFwd = o.dir==='fwd'; }
+        if (dist<o.r && !G.bhWarping) { doBlackHoleWarp(o); return; }
       }
     }
     else if (o.t==='stagepad' && o.alive && !G.refueling) {
@@ -1207,7 +1223,17 @@ function draw() {
     else { ctx.fillStyle=p.col; ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0,p.r*p.life),0,Math.PI*2); ctx.fill(); }
     ctx.restore();
   }
-  if (G.bhFlash>0) { ctx.fillStyle=`rgba(30,0,55,${(G.bhFlash/48)*.88})`; ctx.fillRect(0,0,W,H); G.bhFlash--; }
+  if (G.bhFlash>0) {
+    const fc=G.bhFlashFwd?`rgba(0,180,255,${(G.bhFlash/52)*.8})`:`rgba(30,0,55,${(G.bhFlash/52)*.88})`;
+    ctx.fillStyle=fc; ctx.fillRect(0,0,W,H); G.bhFlash--;
+  }
+  // black hole proximity edge vignette
+  if (G.bhNear>0) {
+    const bv=ctx.createRadialGradient(W/2,H/2,H*.15,W/2,H/2,H*.75);
+    const bc=G.bhNearFwd?`rgba(0,180,255,${G.bhNear*.55})`:`rgba(120,0,200,${G.bhNear*.55})`;
+    bv.addColorStop(0,'transparent'); bv.addColorStop(1,bc);
+    ctx.fillStyle=bv; ctx.fillRect(0,0,W,H);
+  }
   // vignette
   const v=ctx.createRadialGradient(W/2,H/2,H*.24,W/2,H/2,H*.74);
   v.addColorStop(0,'transparent'); v.addColorStop(1,'rgba(0,0,0,.26)');
@@ -1324,17 +1350,32 @@ function drawObj(o, sy) {
       if(!o.alive) break;
       ctx.translate(o.x, sy);
       const bt=G.tick*.022;
+      const isFwd = o.dir==='fwd';
+      // color palette: fwd=cyan/blue wormhole, back=purple/orange black hole
+      const c1=isFwd?[0,200,255]:[160,60,255];
+      const c2=isFwd?[0,120,255]:[255,110,30];
+      // pull zone danger ring (pulsing at pullR)
+      const pullPulse = .5+.5*Math.sin(G.tick*.08);
+      ctx.save();
+      ctx.strokeStyle=`rgba(${c1[0]},${c1[1]},${c1[2]},${.12+pullPulse*.1})`;
+      ctx.lineWidth=1.5+pullPulse*1.5;
+      ctx.setLineDash([8,10]);
+      ctx.beginPath(); ctx.arc(0,0,o.pullR,0,Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      // outer glow rings
       for(let i=3;i>=0;i--){
         const gr=ctx.createRadialGradient(0,0,o.r*.4,0,0,o.r*(2+i*.5));
         gr.addColorStop(0,'transparent');
-        gr.addColorStop(.5,i%2===0?`rgba(160,60,255,${.13-i*.025})`:`rgba(255,110,30,${.09-i*.015})`);
+        gr.addColorStop(.5,i%2===0?`rgba(${c1[0]},${c1[1]},${c1[2]},${.14-i*.025})`:`rgba(${c2[0]},${c2[1]},${c2[2]},${.1-i*.018})`);
         gr.addColorStop(1,'transparent');
         ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(0,0,o.r*(2+i*.5),0,Math.PI*2); ctx.fill();
       }
-      ctx.save(); ctx.rotate(bt);
-      for(let arm=0;arm<3;arm++){
-        ctx.save(); ctx.rotate(arm*Math.PI*2/3);
-        ctx.strokeStyle='rgba(200,80,255,.2)'; ctx.lineWidth=1.5; ctx.beginPath();
+      // spiral arms
+      ctx.save(); ctx.rotate(bt*(isFwd?-1:1));
+      for(let arm=0;arm<(isFwd?4:3);arm++){
+        ctx.save(); ctx.rotate(arm*Math.PI*2/(isFwd?4:3));
+        ctx.strokeStyle=`rgba(${c1[0]},${c1[1]},${c1[2]},.22)`; ctx.lineWidth=1.5; ctx.beginPath();
         for(let a=0;a<Math.PI*1.6;a+=0.1){
           const ar=o.r*(.7+a/(Math.PI*1.6)*.8);
           a===0?ctx.moveTo(Math.cos(a)*ar,Math.sin(a)*ar):ctx.lineTo(Math.cos(a)*ar,Math.sin(a)*ar);
@@ -1342,12 +1383,26 @@ function drawObj(o, sy) {
         ctx.stroke(); ctx.restore();
       }
       ctx.restore();
+      // core void
       const dg=ctx.createRadialGradient(0,0,0,0,0,o.r*1.05);
-      dg.addColorStop(0,'rgba(0,0,0,1)'); dg.addColorStop(.8,'rgba(15,0,30,.98)'); dg.addColorStop(1,'transparent');
+      if (isFwd) {
+        dg.addColorStop(0,`rgba(0,30,60,1)`); dg.addColorStop(.7,`rgba(0,10,40,.97)`); dg.addColorStop(1,'transparent');
+      } else {
+        dg.addColorStop(0,'rgba(0,0,0,1)'); dg.addColorStop(.8,'rgba(15,0,30,.98)'); dg.addColorStop(1,'transparent');
+      }
       ctx.fillStyle=dg; ctx.beginPath(); ctx.arc(0,0,o.r*1.1,0,Math.PI*2); ctx.fill();
+      // center shimmer for wormhole
+      if (isFwd) {
+        ctx.globalAlpha=.3+.3*Math.sin(G.tick*.12);
+        const sg=ctx.createRadialGradient(0,0,0,0,0,o.r*.55);
+        sg.addColorStop(0,'rgba(100,220,255,.7)'); sg.addColorStop(1,'transparent');
+        ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(0,0,o.r*.55,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha=1;
+      }
+      // label
       ctx.globalAlpha=.4+.25*Math.sin(G.tick*.07);
-      ctx.fillStyle='rgba(200,100,255,.85)'; ctx.font='bold 9px "Orbitron",monospace'; ctx.textAlign='center';
-      ctx.fillText('⚫ BLACK HOLE',0,-o.r*1.6); ctx.globalAlpha=1;
+      ctx.fillStyle=`rgba(${c1[0]},${c1[1]},${c1[2]},.9)`; ctx.font='bold 9px "Orbitron",monospace'; ctx.textAlign='center';
+      ctx.fillText(isFwd?'🌀 WORMHOLE':'⚫ BLACK HOLE',0,-o.r*1.65); ctx.globalAlpha=1;
       break;
     }
     case 'fuel': {
