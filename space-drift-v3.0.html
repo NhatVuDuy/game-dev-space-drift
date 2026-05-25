@@ -861,7 +861,7 @@ function mkStagePad(wy, stageNo) {
 }
 function mkGate(wy,isStage,gNum,sNum) { return {t:'gate',wy,isStage,gNum,sNum,passed:false}; }
 function mkWall(wy,stg) { const gw=Math.max(75,108-stg*5)+Math.random()*42,gx=W*.06+Math.random()*(W*.88-gw); return {t:'wall',wy,alive:1,gx,gw,h:15,hue:Math.random()}; }
-function mkBlackHole(wy) { return {t:'bh',wy,x:W*.15+Math.random()*W*.7,r:27+Math.random()*10,pullR:130+Math.random()*70,alive:1,dir:Math.random()<.4?'fwd':'back'}; }
+function mkBlackHole(wy) { return {t:'bh',wy,x:W*.15+Math.random()*W*.7,r:27+Math.random()*10,pullR:180+Math.random()*90,alive:1,dir:Math.random()<.4?'fwd':'back'}; }
 
 function genWorld(upTo) {
   let alt = G.lastGen + 130;
@@ -1055,7 +1055,7 @@ function update() {
       const dx=o.x-S.x, dy=o.wy-S.wy, dist=Math.hypot(dx,dy);
       if (dist<o.pullR) {
         const t=1-dist/o.pullR;
-        const f=0.09*t*t;
+        const f=0.18*t*t;
         S.vx+=(dx/dist)*f; S.vy+=(dy/dist)*f;
         if (t > G.bhNear) { G.bhNear = t; G.bhNearFwd = o.dir==='fwd'; }
         if (dist<o.r && !G.bhWarping) { doBlackHoleWarp(o); return; }
@@ -1230,7 +1230,7 @@ function draw() {
   // black hole proximity edge vignette
   if (G.bhNear>0) {
     const bv=ctx.createRadialGradient(W/2,H/2,H*.15,W/2,H/2,H*.75);
-    const bc=G.bhNearFwd?`rgba(0,180,255,${G.bhNear*.55})`:`rgba(120,0,200,${G.bhNear*.55})`;
+    const bc=G.bhNearFwd?`rgba(0,180,255,${G.bhNear*.22})`:`rgba(120,0,200,${G.bhNear*.22})`;
     bv.addColorStop(0,'transparent'); bv.addColorStop(1,bc);
     ctx.fillStyle=bv; ctx.fillRect(0,0,W,H);
   }
@@ -1354,15 +1354,6 @@ function drawObj(o, sy) {
       // color palette: fwd=cyan/blue wormhole, back=purple/orange black hole
       const c1=isFwd?[0,200,255]:[160,60,255];
       const c2=isFwd?[0,120,255]:[255,110,30];
-      // pull zone danger ring (pulsing at pullR)
-      const pullPulse = .5+.5*Math.sin(G.tick*.08);
-      ctx.save();
-      ctx.strokeStyle=`rgba(${c1[0]},${c1[1]},${c1[2]},${.12+pullPulse*.1})`;
-      ctx.lineWidth=1.5+pullPulse*1.5;
-      ctx.setLineDash([8,10]);
-      ctx.beginPath(); ctx.arc(0,0,o.pullR,0,Math.PI*2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
       // outer glow rings
       for(let i=3;i>=0;i--){
         const gr=ctx.createRadialGradient(0,0,o.r*.4,0,0,o.r*(2+i*.5));
