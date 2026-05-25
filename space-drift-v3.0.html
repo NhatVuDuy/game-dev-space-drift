@@ -988,13 +988,13 @@ function update() {
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
             G.parts.push({
-              x: launchPadFx.x + side * (launchPadFx.w * .42 + Math.random() * 6),
+              x: launchPadFx.x + side * (launchPadFx.w * .42 + Math.random() * 5),
               y: psy - launchPadFx.h - 2,
-              vx: side * (0.6 + Math.random() * 1.4),
-              vy: -(0.3 + Math.random() * 0.8),
-              life: .4 + Math.random() * .35,
-              r: 4 + Math.random() * 7,
-              col: Math.random() < .6 ? 'rgba(200,215,230,.35)' : 'rgba(255,240,200,.3)'
+              vx: side * (0.4 + Math.random() * 0.9),
+              vy: -(0.2 + Math.random() * 0.5),
+              life: .4 + Math.random() * .3,
+              r: 3 + Math.random() * 5,
+              col: Math.random() < .6 ? 'rgba(200,212,225,.26)' : 'rgba(240,235,220,.2)'
             });
           }
         }
@@ -1177,32 +1177,27 @@ function startRefuel(pad) {
   G.ship.vy = 0;
   document.getElementById('rf-msg').classList.add('on');
   document.getElementById('rf-inline').textContent = Math.round(G.ship.fuel) + '%';
-  // landing dust burst — spreads sideways and slightly up
+  // soft landing dust — gentle sideways puff, exhaust-style
   const lsy = w2s(pad.wy);
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 10; i++) {
     const side = Math.random() < .5 ? -1 : 1;
-    const sp = 1.2 + Math.random() * 3.2;
     G.parts.push({
-      x: pad.x + (Math.random() - .5) * pad.w * .7,
+      x: pad.x + (Math.random() - .5) * pad.w * .55,
       y: lsy - pad.h,
-      vx: side * (.8 + Math.random() * 2.5),
-      vy: -(.4 + Math.random() * 1.8),
-      life: .5 + Math.random() * .45,
-      r: 3 + Math.random() * 9,
-      col: Math.random() < .55 ? 'rgba(210,205,195,.48)' : 'rgba(160,200,230,.38)'
+      vx: side * (.3 + Math.random() * 1.1),
+      vy: -(0.2 + Math.random() * 0.8),
+      life: .5 + Math.random() * .4,
+      r: 3 + Math.random() * 6,
+      col: Math.random() < .5 ? 'rgba(205,200,192,.36)' : 'rgba(170,188,210,.26)'
     });
   }
 }
 function rfLaunch() {
   document.getElementById('rf-ov').classList.remove('on');
   stopOverlayDraw();
-  // launch fire blast
+  // launch smoke puff — soft, like exhaust scaled up
   const pad = G.refuelPad || G.objs.find(x => x.t === 'launchpad');
-  if (pad) {
-    const lsy = w2s(pad.wy);
-    cinematicBurst(pad.x, lsy, 2.4, T.tc[0]);
-    for (let i = 0; i < 6; i++) spawnPadFx(pad, 3.5, T.tc[i % T.tc.length] || T.tc[0]);
-  }
+  if (pad) for (let i = 0; i < 3; i++) spawnPadFx(pad, 2.0, T.tc[0]);
   G.refueling = false; G.ship.vy = 1.5; G.firstThrust = true; G.gravOn = true;
   G.score += 500 * G.stgN; toast('🚀 Stage ' + G.stgN + ' — GO!', 1500); loop();
 }
@@ -1233,18 +1228,18 @@ function spawnExh() { const sy=w2s(G.ship.wy)+20; G.exh.push({x:G.ship.x+(Math.r
 function boom(x,y,col) { for(let i=0;i<14;i++){const a=Math.random()*6.28,s=1+Math.random()*3.5;G.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:2+Math.random()*7,col});} }
 function popTxt(x,y,text,col,size,decay) { G.parts.push({type:'txt',x,y,vx:0,vy:-1.3,life:1,text,col,sz:size||12,dl:decay||.015}); }
 function spawnPadFx(pad, intensity, col) {
-  const n = Math.max(1, Math.round(2 * intensity));
+  const n = Math.max(1, Math.round(intensity));
   const px = pad.x - pad.w/2;
   for (let i=0; i<n; i++) {
     const x = px + Math.random() * pad.w;
     const y = w2s(pad.wy) - pad.h + 2;
     G.parts.push({
       x, y,
-      vx: (Math.random() - 0.5) * (0.9 + intensity * 0.5),
-      vy: -0.9 - Math.random() * (1.8 + intensity * 1.15),
-      life: 0.5 + Math.random() * 0.45,
-      r: 1.8 + Math.random() * (5.2 * intensity),
-      col: Math.random() < 0.45 ? aC(col || T.tc[0], 0.88) : (Math.random()<0.7 ? 'rgba(220,220,220,0.45)' : 'rgba(120,170,255,0.35)')
+      vx: (Math.random() - 0.5) * (0.4 + intensity * 0.2),
+      vy: -0.4 - Math.random() * (0.7 + intensity * 0.4),
+      life: 0.55 + Math.random() * 0.4,
+      r: 2 + Math.random() * (2.8 * intensity),
+      col: Math.random() < 0.35 ? aC(col || T.tc[0], 0.55) : (Math.random()<0.6 ? 'rgba(215,215,215,.38)' : 'rgba(190,205,220,.3)')
     });
   }
 }
@@ -1348,12 +1343,6 @@ function drawObj(o, sy) {
       }
       ctx.restore();
       // ── platform ──
-      const gl=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*.6);
-      gl.addColorStop(0,aC(T.pc,.35)); gl.addColorStop(1,'transparent');
-      ctx.fillStyle=gl; ctx.fillRect(px-18,sy-24,o.w+36,38);
-      const aura=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*.95);
-      aura.addColorStop(0,aC(T.tc[0],.28)); aura.addColorStop(1,'transparent');
-      ctx.fillStyle=aura; ctx.fillRect(px-34,sy-46,o.w+68,72);
       ctx.fillStyle=T.pc; rr(px,sy-o.h,o.w,o.h,5); ctx.fill();
       ctx.fillStyle='rgba(0,0,0,.2)';
       for(let xi=px+12;xi<px+o.w-12;xi+=18) ctx.fillRect(xi,sy-o.h+2,9,o.h-4);
@@ -1368,12 +1357,6 @@ function drawObj(o, sy) {
     }
     case 'stagepad': {
       const px=o.x-o.w/2;
-      const gl=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*.72);
-      gl.addColorStop(0,aC(T.pc,.35)); gl.addColorStop(1,'transparent');
-      ctx.fillStyle=gl; ctx.fillRect(px-20,sy-30,o.w+40,48);
-      const aura2=ctx.createRadialGradient(o.x,sy,0,o.x,sy,o.w*1.2);
-      aura2.addColorStop(0,aC(T.pc,.26)); aura2.addColorStop(1,'transparent');
-      ctx.fillStyle=aura2; ctx.fillRect(px-28,sy-46,o.w+56,72);
       ctx.fillStyle=T.pc; rr(px,sy-o.h,o.w,o.h,6); ctx.fill();
       ctx.fillStyle='rgba(0,0,0,.2)';
       for(let xi=px+10;xi<px+o.w-10;xi+=16) ctx.fillRect(xi,sy-o.h+2,8,o.h-4);
