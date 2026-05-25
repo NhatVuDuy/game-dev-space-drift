@@ -1339,11 +1339,73 @@ function drawObj(o, sy) {
     }
     case 'wall': {
       if(!o.alive) break;
-      ctx.fillStyle=T.wh(o.hue);
-      if(o.gx>2){rr(0,sy-o.h,o.gx,o.h,0);ctx.fill();}
-      const rw=W-(o.gx+o.gw); if(rw>2){rr(o.gx+o.gw,sy-o.h,rw,o.h,0);ctx.fill();}
-      ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.setLineDash([4,5]);
-      ctx.beginPath();ctx.moveTo(o.gx+o.gw/2,sy-o.h-12);ctx.lineTo(o.gx+o.gw/2,sy+7);ctx.stroke();ctx.setLineDash([]);
+      const tk = G.tick;
+      const h = o.h;
+      const vh = h + 7; // visual height slightly taller than hitbox
+      const hue = 185 + o.hue * 40; // cyan → teal → blue
+      const pulse = .58 + .42 * Math.sin(tk * .09);
+      // deterministic "random" that updates every 3 frames — creates flicker illusion
+      const seeded = (n) => Math.sin(n * 127.1 + Math.floor(tk / 3) * .97) * .5 + .5;
+
+      const drawSlab = (x, w) => {
+        if (w < 2) return;
+        const isLeft = x === 0;
+        const ix = isLeft ? x + w : x; // gap-facing inner edge
+
+        // Dark energy core
+        ctx.fillStyle = `hsla(${hue},65%,5%,.94)`;
+        ctx.fillRect(x, sy - vh, w, vh);
+
+        // Top & bottom glowing bars
+        ctx.fillStyle = `hsla(${hue},100%,68%,${.78 * pulse})`;
+        ctx.fillRect(x, sy - vh, w, 2);
+        ctx.fillRect(x, sy - 1.5, w, 2);
+
+        // Inner edge glow fade
+        const gw2 = Math.min(w, 24);
+        const eg = ctx.createLinearGradient(isLeft ? ix - gw2 : ix, 0, isLeft ? ix : ix + gw2, 0);
+        eg.addColorStop(isLeft ? 1 : 0, `hsla(${hue},100%,62%,${.58 * pulse})`);
+        eg.addColorStop(isLeft ? 0 : 1, 'transparent');
+        ctx.fillStyle = eg; ctx.fillRect(isLeft ? ix - gw2 : ix, sy - vh, gw2, vh);
+
+        // Bright inner edge line
+        ctx.strokeStyle = `hsla(${hue},100%,90%,${pulse})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ix, sy - vh); ctx.lineTo(ix, sy); ctx.stroke();
+
+        // Scan line flowing upward
+        const scanY = sy - (tk * 2) % (vh + 4);
+        ctx.globalAlpha = .26 * pulse;
+        ctx.fillStyle = `hsla(${hue + 10},100%,94%,1)`;
+        ctx.fillRect(x, scanY - 1, w, 2);
+        ctx.globalAlpha = 1;
+
+        // Arc sparks along inner edge
+        const nSparks = Math.max(3, Math.ceil(w / 16));
+        for (let i = 0; i < nSparks; i++) {
+          const bright = seeded(i * 2.9 + x * .007);
+          if (bright < .4) continue;
+          const ny = sy - vh * .08 - vh * .84 * seeded(i * 5.3 + x * .013);
+          const alpha = (bright - .4) / .6;
+          // node dot
+          ctx.fillStyle = `hsla(${hue + 15},100%,96%,${alpha})`;
+          ctx.beginPath(); ctx.arc(ix, ny, 1.8, 0, Math.PI * 2); ctx.fill();
+          // spark zap
+          if (bright > .68) {
+            const sLen = 4 + seeded(i * 7.1) * 10;
+            const sAngle = (isLeft ? .5 : Math.PI - .5) + (seeded(i * 3.7) - .5) * 1.4;
+            ctx.strokeStyle = `hsla(${hue},100%,88%,${(bright - .68) * 3.2})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(ix, ny);
+            ctx.lineTo(ix + Math.cos(sAngle) * sLen, ny + Math.sin(sAngle) * sLen);
+            ctx.stroke();
+          }
+        }
+      };
+
+      if (o.gx > 2) drawSlab(0, o.gx);
+      const rw = W - (o.gx + o.gw); if (rw > 2) drawSlab(o.gx + o.gw, rw);
       break;
     }
     case 'bh': {
