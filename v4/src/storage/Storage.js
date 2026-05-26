@@ -10,8 +10,17 @@ export function loadStats() {
   catch { return {}; }
 }
 
-export function saveStats(stats) {
-  try { localStorage.setItem(KEY_STATS, JSON.stringify(stats)); } catch {}
+export function saveStats(score, stage, maxAlt) {
+  try {
+    const s = loadStats();
+    const isNew = score > (s.best || 0);
+    s.best   = Math.max(s.best   || 0, score);
+    s.stBest = Math.max(s.stBest || 1, stage);
+    s.games  = (s.games || 0) + 1;
+    if (maxAlt !== undefined) s.maxAlt = Math.max(s.maxAlt || 0, maxAlt);
+    localStorage.setItem(KEY_STATS, JSON.stringify(s));
+    return isNew;
+  } catch { return false; }
 }
 
 export function loadCollection() {

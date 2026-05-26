@@ -15,7 +15,12 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-#cv { position: fixed; top: 0; left: 0; z-index: 1; display: block; }
+/* Three.js canvas container */
+#app { position: fixed; inset: 0; z-index: 1; }
+#app canvas { display: block; width: 100% !important; height: 100% !important; }
+
+/* Home screen sits on top of Three.js canvas */
+#sh { background: transparent; }
 
 #ver {
   position: fixed; bottom: 9px; left: 11px;
@@ -58,6 +63,21 @@ html, body {
 .hb-mid { min-width: 80px; }
 .hv { font-family: 'Orbitron', monospace; font-size: 14px; color: #fff; line-height: 1; font-weight: 700; }
 .hl { font-size: 7px; color: rgba(255,255,255,.32); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 3px; }
+
+/* Armor bar */
+#armor-wrap {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: 54px; display: flex; align-items: center; gap: 6px;
+}
+#armor-bg {
+  width: 100px; height: 7px; background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.15); border-radius: 4px; overflow: hidden;
+}
+#armor-bar {
+  height: 100%; background: #39ff14; border-radius: 3px;
+  transition: width .2s, background .3s;
+}
+#armor-icon { font-size: 13px; }
 
 #sbadge {
   position: absolute; top: 48px; left: 50%; transform: translateX(-50%);

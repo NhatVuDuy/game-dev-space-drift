@@ -9,17 +9,18 @@
 <meta name="theme-color" content="#04040f">
 <title>SPACE DRIFT v4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:ital,wght@0,300;0,600;0,800;1,300&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/src/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-<canvas id="cv"></canvas>
+<!-- Three.js renderer canvas goes here -->
+<div id="app"></div>
+
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
 <div id="ver">v4</div>
 <div id="toast"></div>
 
-<!-- ── HUD (visible while playing) ── -->
+<!-- ── HUD (in-game) ── -->
 <div id="ui">
   <div id="hud">
     <div class="hb"><div class="hl">Score</div><div class="hv" id="hs">0</div></div>
@@ -27,6 +28,12 @@
     <div class="hb"><div class="hl">Fuel</div><div class="hv" id="hf">100%</div></div>
   </div>
   <div id="sbadge">STAGE <span id="hstage">1</span> · GATE <span id="hgate">0</span>/2</div>
+
+  <!-- Armor bar -->
+  <div id="armor-wrap">
+    <div id="armor-bg"><div id="armor-bar" style="width:100%"></div></div>
+    <span id="armor-icon">🛡️</span>
+  </div>
 
   <div id="bar-fuel">
     <div class="bi">⛽</div>
@@ -42,45 +49,26 @@
     </div>
   </div>
 
-  <div id="btn-left"
-    ontouchstart="steer(-1)" ontouchend="steer(0)" ontouchcancel="steer(0)"
-    onmousedown="steer(-1)" onmouseup="steer(0)">◀</div>
-  <div id="btn-right"
-    ontouchstart="steer(1)"  ontouchend="steer(0)" ontouchcancel="steer(0)"
-    onmousedown="steer(1)"  onmouseup="steer(0)">▶</div>
-  <div id="thr" ontouchstart="thrusting=true" ontouchend="thrusting=false" ontouchcancel="thrusting=false">
-    <span id="thr-ic">🔥</span>
-    <small>THRUST</small>
-  </div>
+  <div id="btn-left"  ontouchstart="steer(-1)" ontouchend="steer(0)" ontouchcancel="steer(0)" onmousedown="steer(-1)" onmouseup="steer(0)">◀</div>
+  <div id="btn-right" ontouchstart="steer(1)"  ontouchend="steer(0)" ontouchcancel="steer(0)" onmousedown="steer(1)"  onmouseup="steer(0)">▶</div>
+  <div id="thr"><span id="thr-ic">🔥</span><small>THRUST</small></div>
 </div>
 
-<!-- ── HOME SCREEN ── -->
+<!-- ── HOME ── -->
 <div class="scr on" id="sh">
-  <canvas id="home-cv"></canvas>
   <div class="hc">
     <div class="lorb"><span class="le" id="le">🚀</span></div>
-    <div class="lt" id="lt">SPACE DRIFT</div>
+    <div class="lt" id="lt" style="background:linear-gradient(135deg,#00cfff,#0080ff,#7b2fff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">SPACE DRIFT</div>
     <div class="lsub">NAVIGATE THE VOID · v4</div>
     <div class="tr" id="tr"></div>
     <div class="brow">
-      <div class="bri">
-        <div class="brv" id="hbest">0</div>
-        <div class="brl">Best</div>
-      </div>
-      <div class="bri">
-        <div class="brv" id="hgames">0</div>
-        <div class="brl">Games</div>
-      </div>
-      <div class="bri">
-        <div class="brv" id="hstbest">1</div>
-        <div class="brl">Stage</div>
-      </div>
+      <div class="bri"><div class="brv" id="hbest">0</div><div class="brl">Best</div></div>
+      <div class="bri"><div class="brv" id="hgames">0</div><div class="brl">Games</div></div>
+      <div class="bri"><div class="brv" id="hstbest">1</div><div class="brl">Stage</div></div>
     </div>
-    <button class="btnp" id="btnp" onclick="startGame()">LAUNCH</button>
+    <button class="btnp" id="btnp" onclick="startGame()" style="background:linear-gradient(135deg,#00cfff,#0060cc)">LAUNCH</button>
     <button class="btns hi" onclick="showScr('show')">HOW TO PLAY</button>
     <button class="btns hi" onclick="enableGyro()">📱 ENABLE TILT</button>
-    <button class="btns hi" id="cal-home-btn" style="display:none" onclick="showCalOverlay()">📐 RECALIBRATE</button>
-    <button class="btns hi" id="ads-btn" onclick="toggleAds()">ADS: ON</button>
   </div>
 </div>
 
@@ -95,29 +83,20 @@
       <div class="gobig" id="gosc">0</div>
     </div>
     <div class="gorow">
-      <div class="goit">
-        <div class="gov" id="goalt">0m</div>
-        <div class="gol">Max Alt</div>
-      </div>
-      <div class="goit">
-        <div class="gov" id="gostg">1</div>
-        <div class="gol">Stage</div>
-      </div>
-      <div class="goit">
-        <div class="gov" id="gogem">0</div>
-        <div class="gol">Gems</div>
-      </div>
+      <div class="goit"><div class="gov" id="goalt">0m</div><div class="gol">Max Alt</div></div>
+      <div class="goit"><div class="gov" id="gostg">1</div><div class="gol">Stage</div></div>
+      <div class="goit"><div class="gov" id="gogem">0</div><div class="gol">Gems</div></div>
     </div>
     <div class="rbtn" onclick="watchRevive()">
-      <div class="rbtn-title" id="revive-title">📺 WATCH AD → REVIVE</div>
-      <div class="rbtn-sub">Full fuel + 3 shields</div>
+      <div class="rbtn-title" id="revive-title">💖 REVIVE</div>
+      <div class="rbtn-sub">Full fuel + armor restore</div>
     </div>
-    <button class="btnp go-retry" onclick="startGame()">RETRY</button>
+    <button class="btnp go-retry" onclick="startGame()" style="background:linear-gradient(135deg,#00cfff,#0060cc)">RETRY</button>
     <button class="btns" onclick="goHome()">HOME</button>
   </div>
 </div>
 
-<!-- ── STAGE ADVANCE ANIM ── -->
+<!-- ── STAGE CLEAR ANIM ── -->
 <div id="sa-ov">
   <div class="saring" id="saring">
     <div class="sa-lbl">STAGE</div>
@@ -126,26 +105,14 @@
   </div>
 </div>
 
-<!-- ── STAGE CHOICE ── -->
-<div id="sc-ov" class="scr">
-  <div class="sc-card">
-    <div class="sct" id="sct">STAGE 1 COMPLETE!</div>
-    <div class="scs">Choose your next move</div>
-    <div class="sc-btns">
-      <button class="scb fly" onclick="choiceFly()">🚀 KEEP FLYING</button>
-      <button class="scb land" onclick="choiceLand()">🛬 LAND &amp; REFUEL</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── REFUEL OVERLAY ── -->
+<!-- ── REFUEL ── -->
 <div id="rf-ov">
   <div class="rf-card">
     <div class="rft">⛽ REFUELING</div>
     <div class="rfs">STAGE PAD — SAFE ZONE</div>
     <div class="rftank"><div class="rffill" id="rffill" style="width:0%"></div></div>
     <div class="rfpct" id="rfpct">0%</div>
-    <button class="rfbtn" id="rfbtn" onclick="rfLaunch()">LAUNCH ▲</button>
+    <button class="rfbtn" id="rfbtn" onclick="rfLaunch()">🚀 LAUNCH</button>
   </div>
 </div>
 
@@ -154,13 +121,13 @@
   <div class="hwc">
     <div class="hwt">HOW TO PLAY</div>
     <div class="hwr"><div class="hwi">📱</div><div class="hwx"><b>Mobile:</b> Tilt or tap ◀▶ to steer · Hold 🔥 to thrust</div></div>
-    <div class="hwr"><div class="hwi">🖥️</div><div class="hwx"><b>Desktop:</b> Move mouse to steer · Click/Space to thrust</div></div>
-    <div class="hwr"><div class="hwi">🚪</div><div class="hwx">Fly through 2 gates → reach the Stage Gate</div></div>
-    <div class="hwr"><div class="hwi">🛬</div><div class="hwx">After Stage Gate: land to refuel, or keep flying!</div></div>
-    <div class="hwr"><div class="hwi">⛽</div><div class="hwx">Grab fuel canisters — run dry and you crash</div></div>
-    <div class="hwr"><div class="hwi">🚨</div><div class="hwx">Red asteroids are deadly · dodge them!</div></div>
-    <div class="hwr"><div class="hwi">⚫</div><div class="hwx"><b>Black holes</b> warp you back 1–5 stages</div></div>
-    <button class="btnp" style="width:100%;margin:18px 0 0" onclick="showScr('sh')">GOT IT ✓</button>
+    <div class="hwr"><div class="hwi">🖥️</div><div class="hwx"><b>Desktop:</b> Move mouse to steer · Click to thrust</div></div>
+    <div class="hwr"><div class="hwi">🚪</div><div class="hwx">Fly through gates to score — 2 gates = stage advance</div></div>
+    <div class="hwr"><div class="hwi">🛬</div><div class="hwx">Land on stage pads to refuel</div></div>
+    <div class="hwr"><div class="hwi">⛽</div><div class="hwx">Grab fuel canisters · medkits restore armor</div></div>
+    <div class="hwr"><div class="hwi">🌑</div><div class="hwx">Asteroids drain armor · 0 armor = game over</div></div>
+    <div class="hwr"><div class="hwi">⚫</div><div class="hwx">Black holes pull you in — fly wide!</div></div>
+    <button class="btnp" style="width:100%;margin:18px 0 0;background:linear-gradient(135deg,#00cfff,#0060cc)" onclick="showScr('sh')">GOT IT ✓</button>
   </div>
 </div>
 
@@ -169,44 +136,9 @@
   <div class="tov-card">
     <div class="tov-ic">📱</div>
     <div class="tov-t">TILT TO STEER</div>
-    <div class="tov-s">Tilt your device left/right to steer.<br>Roll mode · No invert · Calibrate anytime via menu.</div>
-    <button class="tov-allow" onclick="tiltAllow()">ALLOW MOTION ACCESS</button>
-    <button class="tov-skip" onclick="tiltSkip()">Use ◀▶ buttons instead</button>
-  </div>
-</div>
-
-<!-- ── CALIBRATION ── -->
-<div id="cal-ov">
-  <div class="cal-card">
-    <div class="cal-ic">📐</div>
-    <div class="cal-t">SET ZERO POSITION</div>
-    <div class="cal-s">Hold your device at your preferred angle, then tap Calibrate to set that as steering center.</div>
-    <div class="cal-ind">
-      <div class="cal-track">
-        <div class="cal-mid"></div>
-        <div class="cal-fill" id="cal-fill" style="left:50%;width:0%"></div>
-      </div>
-      <div class="cal-deg" id="cal-deg">0°</div>
-      <div class="cal-dlbl" id="cal-dlbl">YAW FROM CENTER</div>
-    </div>
-    <div class="cal-opts">
-      <button class="cal-tog" id="cal-yaw" onclick="setGyroMode('yaw')">YAW</button>
-      <button class="cal-tog" id="cal-roll" onclick="setGyroMode('roll')">ROLL</button>
-      <button class="cal-tog" id="cal-inv" onclick="toggleGyroInvert()">⇄ INVERT</button>
-    </div>
-    <button class="cal-btn" onclick="doCalibrate()">✓ SET AS CENTER</button>
-    <button class="cal-skip" onclick="resetCalibrate()">↺ Reset to device default</button>
-    <button class="cal-skip" onclick="skipCalibrate()" style="margin-top:6px;font-size:10px;opacity:.6">Close</button>
-  </div>
-</div>
-
-<!-- ── INTERSTITIAL AD (placeholder) ── -->
-<div class="scr" id="sad">
-  <div class="adbox">
-    <div style="font-size:8px;color:rgba(255,255,255,.12);letter-spacing:2px;margin-bottom:7px">ADVERTISEMENT</div>
-    <div class="adph"><span style="font-size:20px">📺</span><span>AD SPACE · 300×250</span></div>
-    <div class="adsk">Skip in <span id="acd">5</span>s</div>
-    <button class="bsk" id="bsk" onclick="closeAd()">SKIP ▶</button>
+    <div class="tov-s">Allow motion sensor access for tilt steering.</div>
+    <button class="tov-allow" onclick="tiltAllow()">ALLOW MOTION</button>
+    <button class="tov-skip" onclick="tiltSkip()">Use ◀▶ buttons</button>
   </div>
 </div>
 
