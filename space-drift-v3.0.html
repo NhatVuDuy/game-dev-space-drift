@@ -195,7 +195,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">41</div>
+<div id="ver">42</div>
 <div id="toast"></div>
 
 
@@ -1316,7 +1316,7 @@ async function startGame() {
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
     landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false, exploding:false,
-    hitGrace:0, armor:100, usedContinue:false,
+    hitGrace:0, armor:100,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -1704,12 +1704,8 @@ function doCrash() {
     if (++f < 58) requestAnimationFrame(expLoop);
     else {
       G.exploding = false;
-      if (!G.usedContinue) {
-        document.getElementById('cont-stg').textContent = G.stgN;
-        showScr('cont-ov');
-      } else {
-        G.over = true; endGame(false);
-      }
+      document.getElementById('cont-stg').textContent = G.stgN;
+      showScr('cont-ov');
     }
   })();
 }
@@ -2403,7 +2399,6 @@ function doContinue() {
   }
   if (!pad) { pad = mkStagePad(Math.max(200, deathWy - 200), G.stgN); G.objs.push(pad); }
   pad.alive = 1; pad.fuelReserve = 100;
-  G.usedContinue = true;
   G.ship.alive = true;
   G.ship.wy = pad.wy + pad.h + SR + 1;
   G.ship.x = pad.x;
@@ -2414,6 +2409,10 @@ function doContinue() {
   G.cam = G.ship.wy - H * 0.44;
   G.refueling = true; G.refuelPad = pad;
   G.landMistTick = 60; G.landMistPad = pad;
+  // update fuel bar DOM (loop() not running yet, so update manually)
+  document.getElementById('rffill').style.width = '100%';
+  document.getElementById('rfpct').textContent = '100%';
+  document.getElementById('rfbtn').classList.add('on');
   document.getElementById('rf-ov').classList.add('on');
   document.getElementById('ui').classList.add('show');
   startOverlayDraw();
