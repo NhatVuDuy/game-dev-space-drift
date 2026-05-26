@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">35</div>
+<div id="ver">36</div>
 <div id="toast"></div>
 
 
@@ -1982,23 +1982,28 @@ function drawObj(o, sy) {
           avx.push(Math.cos(a)*h); avy.push(Math.sin(a)*h);
         }
         const rockPoly=()=>{ctx.beginPath();for(let i=0;i<nv;i++)i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);ctx.closePath();};
-        // flat base fill
+        // solid base fill
         rockPoly(); ctx.fillStyle=o.col; ctx.globalAlpha=1; ctx.fill();
-        // subtle edge darkening (keeps 2D feel, just adds definition)
-        const eg=ctx.createRadialGradient(0,0,o.r*.15,0,0,o.r*1.1);
+        // slight upper-left highlight for 2D depth feel
+        const hg=ctx.createRadialGradient(-o.r*.22,-o.r*.26,0,-o.r*.08,-o.r*.1,o.r*.9);
+        hg.addColorStop(0,'rgba(255,255,255,.18)');
+        hg.addColorStop(1,'rgba(0,0,0,0)');
+        rockPoly(); ctx.fillStyle=hg; ctx.fill();
+        // edge shadow for depth
+        const eg=ctx.createRadialGradient(0,0,o.r*.2,0,0,o.r*1.1);
         eg.addColorStop(0,'rgba(0,0,0,0)');
-        eg.addColorStop(1,'rgba(0,0,0,.48)');
+        eg.addColorStop(1,'rgba(0,0,0,.5)');
         rockPoly(); ctx.fillStyle=eg; ctx.fill();
         // moon-style craters
         const nc=3+(aseed%3);
         for(let p=0;p<nc;p++){
           const cdx=(phash(aseed+p*29)-.5)*o.r*.8, cdy=(phash(aseed+p*29+7)-.5)*o.r*.8;
           const cr=o.r*(.08+phash(aseed+p*29+13)*.12);
-          ctx.globalAlpha=.42; ctx.fillStyle='rgba(0,0,0,.7)';
+          ctx.globalAlpha=.45; ctx.fillStyle='rgba(0,0,0,.72)';
           ctx.beginPath();ctx.arc(cdx,cdy,cr,0,Math.PI*2);ctx.fill();
-          ctx.globalAlpha=.2; ctx.fillStyle='rgba(255,255,255,.28)';
+          ctx.globalAlpha=.22; ctx.fillStyle='rgba(255,255,255,.3)';
           ctx.beginPath();ctx.arc(cdx+cr*.18,cdy+cr*.18,cr*.72,0,Math.PI*2);ctx.fill();
-          ctx.globalAlpha=.28; ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=cr*.2+.5;
+          ctx.globalAlpha=.3; ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=cr*.2+.5;
           ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*1.05,Math.PI*1.8);ctx.stroke();
           ctx.globalAlpha=.2; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=cr*.16+.4;
           ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*.05,Math.PI*.9);ctx.stroke();
@@ -2010,12 +2015,9 @@ function drawObj(o, sy) {
           ctx.fillStyle=phash(aseed+s*41+17)>.5?'rgba(0,0,0,.75)':'rgba(255,255,255,.55)';
           ctx.beginPath();ctx.arc(sx,sy2,o.r*(.013+phash(aseed+s*41+23)*.024),0,Math.PI*2);ctx.fill();
         }
-        // dark outer rim — defines the rock edge
-        ctx.globalAlpha=.6; ctx.strokeStyle='rgba(0,0,0,.65)'; ctx.lineWidth=2;
-        rockPoly(); ctx.stroke();
-        // faint light inner edge
-        ctx.globalAlpha=.25; ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=.9;
-        ctx.shadowColor='rgba(255,255,255,.3)'; ctx.shadowBlur=3;
+        // bright glowing rim — the main thing that makes the rock visible against dark space
+        ctx.globalAlpha=.62; ctx.strokeStyle='rgba(185,205,255,.72)'; ctx.lineWidth=1.2;
+        ctx.shadowColor='rgba(200,220,255,.9)'; ctx.shadowBlur=8;
         rockPoly(); ctx.stroke(); ctx.shadowBlur=0;
       }
 
