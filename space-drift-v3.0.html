@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">39</div>
+<div id="ver">40</div>
 <div id="toast"></div>
 
 
@@ -276,7 +276,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <button class="btns hi" onclick="showScr('show')">HOW TO PLAY</button>
     <button class="btns hi" onclick="enableGyro()">📱 ENABLE TILT</button>
     <button class="btns hi" id="cal-home-btn" style="display:none" onclick="showCalOverlay()">📐 RECALIBRATE</button>
-    <button class="btns hi" id="ads-btn" onclick="toggleAds()">ADS: ON</button>
   </div>
 </div>
 
@@ -307,12 +306,20 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <div class="goit"><div class="gov" id="gostg">1</div><div class="gol">Stage</div></div>
     <div class="goit"><div class="gov" id="gogem">0</div><div class="gol">Gems</div></div>
   </div>
-  <div class="rbtn" onclick="watchRevive()">
-    <div style="font-family:'Exo 2',sans-serif;font-size:13px;font-weight:700;color:#fff" id="revive-title">📺 WATCH AD → REVIVE</div>
-    <div style="font-size:9px;color:rgba(255,255,255,.28);margin-top:2px">Full fuel + 3 shields</div>
-  </div>
   <button class="btnp" onclick="startGame()" style="margin-bottom:8px">RETRY</button>
   <button class="btns" onclick="goHome()">HOME</button>
+</div>
+
+<!-- continue prompt (shown before game-over if no continue used yet) -->
+<div class="scr" id="cont-ov" style="background:rgba(0,0,0,.9);">
+  <div style="font-size:42px;margin-bottom:6px">💥</div>
+  <div style="font-family:'Orbitron',monospace;font-size:19px;font-weight:700;color:#fff;letter-spacing:3px;margin-bottom:5px">CONTINUE?</div>
+  <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:24px">Stage <span id="cont-stg">1</span> · revive at nearest pad</div>
+  <div class="rbtn" onclick="doContinue()" style="border-color:rgba(255,200,0,.3);background:rgba(255,180,0,.07);margin-bottom:16px">
+    <div style="font-family:'Exo 2',sans-serif;font-size:14px;font-weight:700;color:#ffe066">📺 WATCH AD → CONTINUE</div>
+    <div style="font-size:9px;color:rgba(255,255,255,.32);margin-top:3px">Full fuel · 80% armor · Nearest pad</div>
+  </div>
+  <button class="btnp" onclick="noRevive()" style="background:rgba(255,255,255,.06);color:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.12);">END GAME</button>
 </div>
 
 <!-- interstitial -->
@@ -1310,7 +1317,7 @@ async function startGame() {
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
     landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false, exploding:false,
-    hitGrace:0, armor:100,
+    hitGrace:0, armor:100, usedContinue:false,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -1696,7 +1703,15 @@ function doCrash() {
     G.parts = G.parts.filter(p=>{p.life-=(p.type==='txt'?(p.dl||.015):.026);if(p.type!=='txt'){p.x+=p.vx;p.y+=p.vy;p.vy+=.055;}else p.y+=p.vy;return p.life>0;});
     G.exh   = G.exh.filter(p=>{p.life-=.054;p.x+=p.vx;p.y+=p.vy;return p.life>0;});
     if (++f < 58) requestAnimationFrame(expLoop);
-    else { G.exploding = false; G.over = true; endGame(false); }
+    else {
+      G.exploding = false;
+      if (!G.usedContinue) {
+        document.getElementById('cont-stg').textContent = G.stgN;
+        showScr('cont-ov');
+      } else {
+        G.over = true; endGame(false);
+      }
+    }
   })();
 }
 function spawnWallBolt(o) {
@@ -2377,8 +2392,34 @@ function endGame(landed) {
   document.getElementById('gogem').textContent=G.ship.gems;
   document.getElementById('nb').classList.toggle('on',isNew);
   document.getElementById('ui').classList.remove('show');
-  if(!adsOff && gamesN%3===0) showInterstitial(()=>showScr('so')); else showScr('so');
+  showScr('so');
 }
+function doContinue() {
+  showScr(null);
+  // Find stagepad closest to death position
+  const deathWy = G.ship.wy;
+  let pad = null, best = Infinity;
+  for (const o of G.objs) {
+    if (o.t === 'stagepad') { const d = Math.abs(o.wy - deathWy); if (d < best) { best = d; pad = o; } }
+  }
+  if (!pad) { pad = mkStagePad(Math.max(200, deathWy - 200), G.stgN); G.objs.push(pad); }
+  pad.alive = 1; pad.fuelReserve = 100;
+  G.usedContinue = true;
+  G.ship.alive = true;
+  G.ship.wy = pad.wy + pad.h + SR + 1;
+  G.ship.x = pad.x;
+  G.ship.vy = 0; G.ship.vx = 0;
+  G.ship.fuel = CFG.FMAX;
+  G.armor = 80; G.hitGrace = 180;
+  G.over = false; G.exploding = false;
+  G.cam = G.ship.wy - H * 0.44;
+  G.refueling = true; G.refuelPad = pad;
+  G.landMistTick = 60; G.landMistPad = pad;
+  document.getElementById('rf-ov').classList.add('on');
+  document.getElementById('ui').classList.add('show');
+  startOverlayDraw();
+}
+function noRevive() { showScr(null); G.over = true; endGame(false); }
 function watchRevive(){toast(adsOff?'💖 Reviving...':'📺 Loading...',1000);setTimeout(()=>{G.ship.alive=true;G.ship.fuel=CFG.FMAX;G.ship.shields=3;G.over=false;G.ship.vy=1;G.ship.vx=0;document.getElementById('ui').classList.add('show');showScr(null);toast('💖 Revived + 3 shields!',2000);loop();},adsOff?300:1200);}
 function showInterstitial(cb){adCb=cb;showScr('sad');let cd=5;document.getElementById('bsk').classList.remove('on');document.getElementById('acd').textContent=cd;clearInterval(adTmr);adTmr=setInterval(()=>{cd--;document.getElementById('acd').textContent=cd;if(cd<=0){clearInterval(adTmr);document.getElementById('bsk').classList.add('on');}},1000);}
 function closeAd(){if(!document.getElementById('bsk').classList.contains('on'))return;showScr(null);if(adCb)adCb();}
@@ -2397,7 +2438,7 @@ function homeLoop() {
 
 // ── INIT ─────────────────────────────────────
 localStorage.setItem('sd_ads_off','1');
-buildThemeSel(); applyTheme(); applyAdsPref(); loadStats(); homeOn=true; homeLoop();
+buildThemeSel(); applyTheme(); loadStats(); homeOn=true; homeLoop();
 document.getElementById('gauge-btn').textContent = 'GAUGE: ' + gaugeSide.toUpperCase();
 setTiltGate(false);
 </script>
