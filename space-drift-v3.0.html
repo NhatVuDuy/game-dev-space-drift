@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">33</div>
+<div id="ver">34</div>
 <div id="toast"></div>
 
 
@@ -1921,58 +1921,99 @@ function drawObj(o, sy) {
     case 'ast': {
       if(!o.alive) break;
       ctx.translate(o.x,sy); ctx.rotate(o.rot);
-      // pulsing danger halo
-      if(o.danger){
-        ctx.save(); ctx.globalAlpha=.26+Math.sin(G.tick*.18)*.13;
-        ctx.strokeStyle=T.dc; ctx.lineWidth=4;
-        ctx.shadowColor=T.dc; ctx.shadowBlur=24;
-        ctx.beginPath();ctx.arc(0,0,o.r+8,0,Math.PI*2);ctx.stroke(); ctx.restore();
-      }
-      // irregular meteorite silhouette — angle+amplitude jitter for lumpy rock shape
+      // shared: seeded irregular polygon (stable shape per asteroid)
       const nv=14, aseed=(Math.round(o.wy*3+o.r*97))|0;
       const avx=[],avy=[];
       for(let i=0;i<nv;i++){
         const base=i/nv*Math.PI*2;
         const aJit=(phash(aseed+i*53)-.5)*(Math.PI*2/nv)*.4;
-        const h=o.r*(.46+phash(aseed+i*17)*.42+phash(aseed+i*11+53)*.12);
+        const h=o.r*(.48+phash(aseed+i*17)*.4+phash(aseed+i*11+53)*.12);
         avx.push(Math.cos(base+aJit)*h); avy.push(Math.sin(base+aJit)*h);
       }
-      // helper — rebuilds polygon path each time (ctx.fill/stroke clears the path)
       const astPoly=()=>{ctx.beginPath();for(let i=0;i<nv;i++)i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);ctx.closePath();};
-      const astCol=o.danger?T.dc:o.col;
-      // dark base fill (covers the whole polygon in near-black first)
       ctx.globalAlpha=1; ctx.shadowBlur=0;
-      astPoly(); ctx.fillStyle='rgba(7,5,3,1)'; ctx.fill();
-      // 3D directional gradient — ctx.fill() with path naturally clips to polygon, no ctx.clip() needed
-      const grd=ctx.createRadialGradient(-o.r*.42,-o.r*.46,o.r*.04,-o.r*.05,-o.r*.05,o.r*1.45);
-      grd.addColorStop(0,'rgba(200,188,168,.92)');
-      grd.addColorStop(.18,astCol);
-      grd.addColorStop(.44,'rgba(38,30,20,.9)');
-      grd.addColorStop(1,'rgba(2,1,1,.99)');
-      astPoly(); ctx.fillStyle=grd; ctx.fill();
-      // craters — centered within polygon so they stay mostly inside the shape
-      const nc=2+(aseed%2);
-      for(let p=0;p<nc;p++){
-        const cx2=(phash(aseed+p*29)-.5)*o.r*.9;
-        const cy2=(phash(aseed+p*29+7)-.5)*o.r*.9;
-        const cr=o.r*(.07+phash(aseed+p*29+13)*.09);
-        ctx.globalAlpha=.55; ctx.fillStyle='rgba(0,0,0,.88)';
-        ctx.beginPath();ctx.arc(cx2,cy2,cr,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=.18; ctx.fillStyle='rgba(80,60,40,.5)';
-        ctx.beginPath();ctx.arc(cx2-cr*.22,cy2-cr*.22,cr*.5,0,Math.PI*2);ctx.fill();
-        ctx.globalAlpha=.18; ctx.strokeStyle='rgba(205,185,155,.7)'; ctx.lineWidth=.5;
-        ctx.beginPath();ctx.arc(cx2,cy2,cr,Math.PI*.9,Math.PI*1.85);ctx.stroke();
+
+      if(o.danger) {
+        // ── FAST asteroid: 3D meteorite style ──────────────────────────
+        // pulsing danger halo
+        ctx.save();
+        ctx.globalAlpha=.26+Math.sin(G.tick*.18)*.13;
+        ctx.strokeStyle=T.dc; ctx.lineWidth=4;
+        ctx.shadowColor=T.dc; ctx.shadowBlur=24;
+        ctx.beginPath();ctx.arc(0,0,o.r+8,0,Math.PI*2);ctx.stroke();
+        ctx.restore();
+        // dark base
+        astPoly(); ctx.fillStyle='rgba(7,5,3,1)'; ctx.fill();
+        // directional 3D gradient
+        const gd=ctx.createRadialGradient(-o.r*.42,-o.r*.46,o.r*.04,-o.r*.05,-o.r*.05,o.r*1.45);
+        gd.addColorStop(0,'rgba(200,188,168,.92)');
+        gd.addColorStop(.18,T.dc);
+        gd.addColorStop(.44,'rgba(38,30,20,.9)');
+        gd.addColorStop(1,'rgba(2,1,1,.99)');
+        astPoly(); ctx.fillStyle=gd; ctx.fill();
+        // craters
+        const nd=2+(aseed%2);
+        for(let p=0;p<nd;p++){
+          const cdx=(phash(aseed+p*29)-.5)*o.r*.9, cdy=(phash(aseed+p*29+7)-.5)*o.r*.9;
+          const cr=o.r*(.07+phash(aseed+p*29+13)*.09);
+          ctx.globalAlpha=.55; ctx.fillStyle='rgba(0,0,0,.88)';
+          ctx.beginPath();ctx.arc(cdx,cdy,cr,0,Math.PI*2);ctx.fill();
+          ctx.globalAlpha=.18; ctx.fillStyle='rgba(80,60,40,.5)';
+          ctx.beginPath();ctx.arc(cdx-cr*.22,cdy-cr*.22,cr*.5,0,Math.PI*2);ctx.fill();
+          ctx.globalAlpha=.18; ctx.strokeStyle='rgba(205,185,155,.7)'; ctx.lineWidth=.5;
+          ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*.9,Math.PI*1.85);ctx.stroke();
+        }
+        // danger rim glow
+        ctx.globalAlpha=.65; ctx.strokeStyle=T.dc; ctx.lineWidth=1.8;
+        ctx.shadowColor=T.dc; ctx.shadowBlur=10;
+        astPoly(); ctx.stroke(); ctx.shadowBlur=0;
+        // specular
+        ctx.globalAlpha=.55; ctx.fillStyle='rgba(255,250,236,.9)';
+        ctx.beginPath();ctx.arc(-o.r*.34,-o.r*.40,o.r*.065,0,Math.PI*2);ctx.fill();
+
+      } else {
+        // ── SLOW asteroid: 2D moon/meteorite surface style ─────────────
+        // flat base fill with theme color
+        astPoly(); ctx.fillStyle=o.col; ctx.fill();
+        // radial vignette darkening at edges (ambient occlusion, keeps 2D feel)
+        const eg=ctx.createRadialGradient(0,0,o.r*.2,0,0,o.r*1.12);
+        eg.addColorStop(0,'rgba(0,0,0,0)');
+        eg.addColorStop(1,'rgba(0,0,0,.52)');
+        astPoly(); ctx.fillStyle=eg; ctx.fill();
+        // moon-style craters: flat bowl with sharp rim and floor highlight
+        const nc=3+(aseed%3);
+        for(let p=0;p<nc;p++){
+          const cdx=(phash(aseed+p*29)-.5)*o.r*.82, cdy=(phash(aseed+p*29+7)-.5)*o.r*.82;
+          const cr=o.r*(.09+phash(aseed+p*29+13)*.13);
+          // outer shadow ring
+          ctx.globalAlpha=.42; ctx.fillStyle='rgba(0,0,0,.7)';
+          ctx.beginPath();ctx.arc(cdx,cdy,cr,0,Math.PI*2);ctx.fill();
+          // floor — slightly lighter, offset toward lower-right
+          ctx.globalAlpha=.2; ctx.fillStyle='rgba(255,255,255,.28)';
+          ctx.beginPath();ctx.arc(cdx+cr*.18,cdy+cr*.18,cr*.72,0,Math.PI*2);ctx.fill();
+          // lit rim arc top-left
+          ctx.globalAlpha=.3; ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=cr*.22+.5;
+          ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*1.05,Math.PI*1.8);ctx.stroke();
+          // shadow rim arc bottom-right
+          ctx.globalAlpha=.22; ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.lineWidth=cr*.18+.4;
+          ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*.05,Math.PI*.9);ctx.stroke();
+        }
+        // surface pits / granules
+        for(let s=0;s<7;s++){
+          const sx=(phash(aseed+s*41)-.5)*o.r*1.05, sy2=(phash(aseed+s*41+5)-.5)*o.r*1.05;
+          ctx.globalAlpha=.1+phash(aseed+s*41+11)*.14;
+          ctx.fillStyle=phash(aseed+s*41+17)>.5?'rgba(0,0,0,.75)':'rgba(255,255,255,.55)';
+          ctx.beginPath();ctx.arc(sx,sy2,o.r*(.014+phash(aseed+s*41+23)*.026),0,Math.PI*2);ctx.fill();
+        }
+        // dark outer rim for definition
+        ctx.globalAlpha=.55; ctx.strokeStyle='rgba(0,0,0,.6)'; ctx.lineWidth=1.8;
+        astPoly(); ctx.stroke();
+        // faint light inner glow on top-left edge
+        ctx.globalAlpha=.22; ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=.8;
+        ctx.shadowColor='rgba(255,255,255,.3)'; ctx.shadowBlur=3;
+        astPoly(); ctx.stroke(); ctx.shadowBlur=0;
       }
-      // silhouette outline
-      ctx.globalAlpha=.55;
-      ctx.strokeStyle=o.danger?T.dc:'rgba(108,98,85,.72)';
-      ctx.lineWidth=o.danger?2:1.2;
-      ctx.shadowColor=o.danger?T.dc:'rgba(138,125,108,.35)';
-      ctx.shadowBlur=o.danger?16:3;
-      astPoly(); ctx.stroke(); ctx.shadowBlur=0;
-      // specular flare top-left
-      ctx.globalAlpha=.55; ctx.fillStyle='rgba(255,250,236,.9)';
-      ctx.beginPath();ctx.arc(-o.r*.34,-o.r*.40,o.r*.065,0,Math.PI*2);ctx.fill();
+
       ctx.globalAlpha=1;
       break;
     }
