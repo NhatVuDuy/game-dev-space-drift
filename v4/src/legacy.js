@@ -1976,4 +1976,15 @@ function homeLoop() {
 // ── INIT ─────────────────────────────────────
 localStorage.setItem('sd_ads_off','1');
 buildThemeSel(); applyTheme(); applyAdsPref(); loadStats(); homeOn=true; homeLoop();
+
+// expose to window — required because legacy.js runs as an ES module
+// and inline onclick="fn()" can only reach window scope
+Object.assign(window, {
+  startGame, steer, rfLaunch, showScr, goHome,
+  watchRevive, closeAd, toggleAds,
+  tiltAllow, tiltSkip, enableGyro,
+  showCalOverlay, doCalibrate, resetCalibrate, skipCalibrate,
+  setGyroMode, toggleGyroInvert,
+  choiceFly, choiceLand,
+});
 setTiltGate(false);
