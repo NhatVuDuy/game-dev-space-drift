@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">34</div>
+<div id="ver">35</div>
 <div id="toast"></div>
 
 
@@ -1921,20 +1921,20 @@ function drawObj(o, sy) {
     case 'ast': {
       if(!o.alive) break;
       ctx.translate(o.x,sy); ctx.rotate(o.rot);
-      // shared: seeded irregular polygon (stable shape per asteroid)
-      const nv=14, aseed=(Math.round(o.wy*3+o.r*97))|0;
-      const avx=[],avy=[];
-      for(let i=0;i<nv;i++){
-        const base=i/nv*Math.PI*2;
-        const aJit=(phash(aseed+i*53)-.5)*(Math.PI*2/nv)*.4;
-        const h=o.r*(.48+phash(aseed+i*17)*.4+phash(aseed+i*11+53)*.12);
-        avx.push(Math.cos(base+aJit)*h); avy.push(Math.sin(base+aJit)*h);
-      }
-      const astPoly=()=>{ctx.beginPath();for(let i=0;i<nv;i++)i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);ctx.closePath();};
+      const aseed=(Math.round(o.wy*3+o.r*97))|0;
       ctx.globalAlpha=1; ctx.shadowBlur=0;
 
       if(o.danger) {
         // ── FAST asteroid: 3D meteorite style ──────────────────────────
+        // irregular shape with angle jitter for organic blob look
+        const nv=14, avx=[],avy=[];
+        for(let i=0;i<nv;i++){
+          const base=i/nv*Math.PI*2;
+          const aJit=(phash(aseed+i*53)-.5)*(Math.PI*2/nv)*.4;
+          const h=o.r*(.48+phash(aseed+i*17)*.4+phash(aseed+i*11+53)*.12);
+          avx.push(Math.cos(base+aJit)*h); avy.push(Math.sin(base+aJit)*h);
+        }
+        const astPoly=()=>{ctx.beginPath();for(let i=0;i<nv;i++)i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);ctx.closePath();};
         // pulsing danger halo
         ctx.save();
         ctx.globalAlpha=.26+Math.sin(G.tick*.18)*.13;
@@ -1943,7 +1943,7 @@ function drawObj(o, sy) {
         ctx.beginPath();ctx.arc(0,0,o.r+8,0,Math.PI*2);ctx.stroke();
         ctx.restore();
         // dark base
-        astPoly(); ctx.fillStyle='rgba(7,5,3,1)'; ctx.fill();
+        astPoly(); ctx.fillStyle='rgba(7,5,3,1)'; ctx.globalAlpha=1; ctx.fill();
         // directional 3D gradient
         const gd=ctx.createRadialGradient(-o.r*.42,-o.r*.46,o.r*.04,-o.r*.05,-o.r*.05,o.r*1.45);
         gd.addColorStop(0,'rgba(200,188,168,.92)');
@@ -1972,46 +1972,51 @@ function drawObj(o, sy) {
         ctx.beginPath();ctx.arc(-o.r*.34,-o.r*.40,o.r*.065,0,Math.PI*2);ctx.fill();
 
       } else {
-        // ── SLOW asteroid: 2D moon/meteorite surface style ─────────────
-        // flat base fill with theme color
-        astPoly(); ctx.fillStyle=o.col; ctx.fill();
-        // radial vignette darkening at edges (ambient occlusion, keeps 2D feel)
-        const eg=ctx.createRadialGradient(0,0,o.r*.2,0,0,o.r*1.12);
+        // ── SLOW asteroid: 2D angular rock with many facets ────────────
+        // evenly-spaced vertices (NO angle jitter) = clear flat sides between corners
+        // large amplitude variation = sharp concave/convex corners = rock look
+        const nv=12, avx=[],avy=[];
+        for(let i=0;i<nv;i++){
+          const a=i/nv*Math.PI*2;
+          const h=o.r*(.36+phash(aseed+i*17)*.42+phash(aseed+i*7+11)*.22);
+          avx.push(Math.cos(a)*h); avy.push(Math.sin(a)*h);
+        }
+        const rockPoly=()=>{ctx.beginPath();for(let i=0;i<nv;i++)i===0?ctx.moveTo(avx[i],avy[i]):ctx.lineTo(avx[i],avy[i]);ctx.closePath();};
+        // flat base fill
+        rockPoly(); ctx.fillStyle=o.col; ctx.globalAlpha=1; ctx.fill();
+        // subtle edge darkening (keeps 2D feel, just adds definition)
+        const eg=ctx.createRadialGradient(0,0,o.r*.15,0,0,o.r*1.1);
         eg.addColorStop(0,'rgba(0,0,0,0)');
-        eg.addColorStop(1,'rgba(0,0,0,.52)');
-        astPoly(); ctx.fillStyle=eg; ctx.fill();
-        // moon-style craters: flat bowl with sharp rim and floor highlight
+        eg.addColorStop(1,'rgba(0,0,0,.48)');
+        rockPoly(); ctx.fillStyle=eg; ctx.fill();
+        // moon-style craters
         const nc=3+(aseed%3);
         for(let p=0;p<nc;p++){
-          const cdx=(phash(aseed+p*29)-.5)*o.r*.82, cdy=(phash(aseed+p*29+7)-.5)*o.r*.82;
-          const cr=o.r*(.09+phash(aseed+p*29+13)*.13);
-          // outer shadow ring
+          const cdx=(phash(aseed+p*29)-.5)*o.r*.8, cdy=(phash(aseed+p*29+7)-.5)*o.r*.8;
+          const cr=o.r*(.08+phash(aseed+p*29+13)*.12);
           ctx.globalAlpha=.42; ctx.fillStyle='rgba(0,0,0,.7)';
           ctx.beginPath();ctx.arc(cdx,cdy,cr,0,Math.PI*2);ctx.fill();
-          // floor — slightly lighter, offset toward lower-right
           ctx.globalAlpha=.2; ctx.fillStyle='rgba(255,255,255,.28)';
           ctx.beginPath();ctx.arc(cdx+cr*.18,cdy+cr*.18,cr*.72,0,Math.PI*2);ctx.fill();
-          // lit rim arc top-left
-          ctx.globalAlpha=.3; ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=cr*.22+.5;
+          ctx.globalAlpha=.28; ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=cr*.2+.5;
           ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*1.05,Math.PI*1.8);ctx.stroke();
-          // shadow rim arc bottom-right
-          ctx.globalAlpha=.22; ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.lineWidth=cr*.18+.4;
+          ctx.globalAlpha=.2; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=cr*.16+.4;
           ctx.beginPath();ctx.arc(cdx,cdy,cr,Math.PI*.05,Math.PI*.9);ctx.stroke();
         }
         // surface pits / granules
         for(let s=0;s<7;s++){
-          const sx=(phash(aseed+s*41)-.5)*o.r*1.05, sy2=(phash(aseed+s*41+5)-.5)*o.r*1.05;
-          ctx.globalAlpha=.1+phash(aseed+s*41+11)*.14;
+          const sx=(phash(aseed+s*41)-.5)*o.r, sy2=(phash(aseed+s*41+5)-.5)*o.r;
+          ctx.globalAlpha=.1+phash(aseed+s*41+11)*.13;
           ctx.fillStyle=phash(aseed+s*41+17)>.5?'rgba(0,0,0,.75)':'rgba(255,255,255,.55)';
-          ctx.beginPath();ctx.arc(sx,sy2,o.r*(.014+phash(aseed+s*41+23)*.026),0,Math.PI*2);ctx.fill();
+          ctx.beginPath();ctx.arc(sx,sy2,o.r*(.013+phash(aseed+s*41+23)*.024),0,Math.PI*2);ctx.fill();
         }
-        // dark outer rim for definition
-        ctx.globalAlpha=.55; ctx.strokeStyle='rgba(0,0,0,.6)'; ctx.lineWidth=1.8;
-        astPoly(); ctx.stroke();
-        // faint light inner glow on top-left edge
-        ctx.globalAlpha=.22; ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=.8;
+        // dark outer rim — defines the rock edge
+        ctx.globalAlpha=.6; ctx.strokeStyle='rgba(0,0,0,.65)'; ctx.lineWidth=2;
+        rockPoly(); ctx.stroke();
+        // faint light inner edge
+        ctx.globalAlpha=.25; ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=.9;
         ctx.shadowColor='rgba(255,255,255,.3)'; ctx.shadowBlur=3;
-        astPoly(); ctx.stroke(); ctx.shadowBlur=0;
+        rockPoly(); ctx.stroke(); ctx.shadowBlur=0;
       }
 
       ctx.globalAlpha=1;
