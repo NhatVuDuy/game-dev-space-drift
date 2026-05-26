@@ -1587,6 +1587,7 @@ localStorage.setItem('sd_ads_off','1');
 buildThemeSel(); applyTheme(); loadStats(); homeOn=true; homeLoop();
 document.getElementById('gauge-btn').textContent = 'GAUGE: ' + gaugeSide.toUpperCase();
 setTiltGate(false);
+try { document.getElementById('ver').textContent = 'v4 · ' + __BUILD__; } catch(e) {}
 
 // Export globals for inline onclick handlers
 Object.assign(window, {
