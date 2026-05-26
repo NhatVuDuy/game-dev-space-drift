@@ -1,21 +1,5 @@
 import { CFG, TH, SR } from './config.js';
-
-// ── SAFE COLOR HELPER (defined first, used everywhere) ──
-function aC(col, a) {
-  if (!col) return 'rgba(128,128,128,' + a + ')';
-  col = col.trim();
-  if (col.startsWith('#')) {
-    let h = col.slice(1);
-    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
-    const r = parseInt(h.slice(0,2),16)||0;
-    const g = parseInt(h.slice(2,4),16)||0;
-    const b = parseInt(h.slice(4,6),16)||0;
-    return 'rgba('+r+','+g+','+b+','+a+')';
-  }
-  if (col.startsWith('rgba')) return col.replace(/,\s*[\d.]+\)$/, ','+a+')');
-  if (col.startsWith('rgb(')) return col.replace('rgb(','rgba(').replace(')',','+a+')');
-  return col;
-}
+import { aC, phash, rr } from './utils.js';
 let AK = localStorage.getItem('sd_theme') || 'cartoon';
 let gaugeSide = localStorage.getItem('sd_gauge') || 'left';
 let T = TH[AK] || TH.scifi;
@@ -439,9 +423,6 @@ function buildThemeSel() {
 }
 
 // ── PARALLAX DEPTH LAYERS ────────────────────
-function phash(n) {
-  n = (((n>>>0)*1664525)+1013904223)>>>0; n^=n>>>16; return n/4294967296;
-}
 const CNST = [
   { s:[[-1,-1.4],[0,-1.4],[1,-1.4],[-1.5,-.2],[1.5,-.2],[-1,.8],[1,.8]], l:[[0,1],[1,2],[3,0],[4,2],[0,5],[2,6],[5,6]] },
   { s:[[-2,.1],[-1,-.2],[0,.05],[1,.2],[1,-.7],[1.8,-1.4],[2.5,-2]], l:[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6]] },
@@ -1967,16 +1948,7 @@ function drawShip() {
   _shipDraw(ctx, S, G.tick);
 }
 
-// helper: roundRect without ctx.save (caller handles save/restore)
-function rr(c,x,y,w,h,r) {
-  if(w<=0||h<=0) return;
-  r=Math.min(r,Math.abs(w)/2,Math.abs(h)/2);
-  c.beginPath();
-  c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);
-  c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);
-  c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();
-}
+// rr imported from utils.js
 
 // ── LANDING ──────────────────────────────────
 function doLanding() {
