@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">36</div>
+<div id="ver">37</div>
 <div id="toast"></div>
 
 
@@ -1213,7 +1213,7 @@ function mkAst(wy, danger) {
   const spd = danger ? (.85+Math.random()*1.2) : (.18+Math.random()*.48);
   const vx = (Math.random()<.5?1:-1) * spd;
   return { t:'ast', wy, alive:1, danger, x:vx>0?-35:W+35,
-    r:danger?9+Math.random()*9:13+Math.random()*19,
+    r:danger?9+Math.random()*9:22+Math.random()*12,
     vx, vy:danger?(Math.random()-.4)*.45:0,
     rot:Math.random()*6.28, rs:(Math.random()-.5)*(danger?.09:.035),
     col:T.ac[0|Math.random()*T.ac.length] };
@@ -1290,6 +1290,7 @@ async function startGame() {
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
     landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false, exploding:false,
+    hitGrace:0, fuelOutWy:null,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -1421,6 +1422,7 @@ function update() {
   }
   if (G.firstThrust && !G.gravOn && G.tick-G.graceTick>=30) G.gravOn=true;
   if (G.padLaunchGrace > 0) G.padLaunchGrace--;
+  if (G.hitGrace > 0) G.hitGrace--;
 
   if (!G.refueling && G.gravOn) S.vy -= CFG.G;
   if (!G.refueling && thrInput && S.fuel>0) { S.vy+=CFG.THR; S.fuel=Math.max(0,S.fuel-CFG.FBURN); S.ta=1; spawnExh(); }
@@ -1428,6 +1430,10 @@ function update() {
 
   if (!G.refueling) S.vx += (tx*CFG.TILT - S.vx) * .09;
   if (!G.refueling && (G.gravOn || thrInput)) { S.wy+=S.vy; S.x+=S.vx; }
+  if (G.gravOn && !G.refueling && S.fuel <= 0) {
+    if (G.fuelOutWy === null) G.fuelOutWy = S.wy;
+    else if (S.wy < G.fuelOutWy - H * 0.48) { doCrash(); return; }
+  } else if (S.fuel > 0) { G.fuelOutWy = null; }
   S.sideL = tx<-.2 ? Math.min(1,S.sideL+.13) : Math.max(0,S.sideL-.09);
   S.sideR = tx>.2  ? Math.min(1,S.sideR+.13) : Math.max(0,S.sideR-.09);
   if (S.x<R) { S.x=R; S.vx=Math.abs(S.vx)*.5; }
@@ -1462,7 +1468,16 @@ function update() {
       if (o.x<-o.r-20 || o.x>W+o.r+20) { o.alive=0; continue; }
       if (G.gravOn && !G.refueling && !skipCollision) {
         const dx=S.x-o.x, dy=w2s(S.wy)-sy;
-        if (Math.hypot(dx,dy)<o.r+R-5) { if(S.shields>0){S.shields--;o.alive=0;boom(o.x,sy,T.dc);}else{doCrash();return;} }
+        if (Math.hypot(dx,dy)<o.r+R-5) {
+          if (S.shields>0) { S.shields--; o.alive=0; boom(o.x,sy,T.dc); }
+          else if (G.hitGrace<=0) {
+            const dmg=o.danger?Math.round(8+o.r*1.4):Math.round(4+o.r*0.85);
+            S.fuel=Math.max(0,S.fuel-dmg);
+            o.alive=0; G.hitGrace=52;
+            boom(o.x,sy,T.dc);
+            popTxt(o.x,sy-18,'-'+dmg,'#ff8844',14,.02);
+          }
+        }
       }
     }
     else if (o.t==='wall' && o.alive) {
