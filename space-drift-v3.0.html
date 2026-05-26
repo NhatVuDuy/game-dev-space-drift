@@ -195,7 +195,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">42</div>
+<div id="ver">43</div>
 <div id="toast"></div>
 
 
@@ -2402,10 +2402,14 @@ function doContinue() {
   G.ship.alive = true;
   G.ship.wy = pad.wy + pad.h + SR + 1;
   G.ship.x = pad.x;
-  G.ship.vy = 0; G.ship.vx = 0;
+  G.ship.vy = 0; G.ship.vx = 0; G.ship.angle = 0;
   G.ship.fuel = CFG.FMAX;
   G.armor = 80; G.hitGrace = 180;
   G.over = false; G.exploding = false;
+  // reset any dirty warp / transition state that would break draw or loop scheduling
+  G.bhWarpScale = 1; G.bhWarpPhase = null; G.bhWarping = false;
+  G.bhCrashShrink = false; G.bhWarpTarget = null;
+  G.stgTrans = false; G.awaitChoice = false; G.launchCharge = 0;
   G.cam = G.ship.wy - H * 0.44;
   G.refueling = true; G.refuelPad = pad;
   G.landMistTick = 60; G.landMistPad = pad;
