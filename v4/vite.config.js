@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  base: '/game-dev-space-drift/v4/',
+  base: '/v4/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
