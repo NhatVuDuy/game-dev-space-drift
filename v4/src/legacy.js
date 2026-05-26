@@ -128,23 +128,8 @@ let gyroBound = false;
 function w2s(wy) { return H - (wy - G.cam); }
 function setTiltGate(ready, reason) {
   tiltReady = !!ready;
-  // iOS asks permission inline on LAUNCH tap; desktop uses mouse — neither needs this gate
-  const isIOS = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
-  const block = !tiltReady && isMob && !isIOS;
-  const launchBtn = document.getElementById('btnp');
-  const retryBtn = document.querySelector('#so .btnp');
+  // v4: tilt is optional — touch buttons always available as fallback
   const tiltBtn = document.querySelector('.btns[onclick="enableGyro()"]');
-  if (launchBtn) {
-    launchBtn.disabled = block;
-    launchBtn.style.opacity = block ? '.45' : '1';
-    launchBtn.style.pointerEvents = block ? 'none' : 'all';
-    launchBtn.textContent = block ? 'TILT REQUIRED' : 'LAUNCH';
-  }
-  if (retryBtn) {
-    retryBtn.disabled = block;
-    retryBtn.style.opacity = block ? '.45' : '1';
-    retryBtn.style.pointerEvents = block ? 'none' : 'all';
-  }
   if (tiltBtn) {
     if (tiltReady) {
       tiltBtn.textContent = '📱 TILT ACTIVE ✓';
@@ -154,7 +139,6 @@ function setTiltGate(ready, reason) {
       tiltBtn.style.color = '';
     }
   }
-  if (block && reason) toast(reason, 2800);
 }
 
 // ── AUDIO ────────────────────────────────────
@@ -936,7 +920,7 @@ async function startGame() {
       else toast('Tilt permission denied — using buttons instead', 2400);
     } catch(e) {}
   } else if (!tiltReady && isMob && !isIOS) {
-    toast('Tilt is required to play. Please enable tilt first.', 2200); return;
+    // tilt optional in v4 — use touch buttons ◀▶
   }
   cancelAnimationFrame(raf); cancelAnimationFrame(overlayRaf);
   initAudio(); homeOn = false; hcv.style.display = 'none';
