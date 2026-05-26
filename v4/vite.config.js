@@ -1,7 +1,12 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'child_process';
+
+const gitHash = (() => { try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch(e) { return '000000'; } })();
+const buildNum = new Date().toISOString().slice(0,10).replace(/-/g,'') + '.' + gitHash;
 
 export default defineConfig({
+  define: { __BUILD__: JSON.stringify(buildNum) },
   base: '/v4/',
   build: {
     outDir: 'dist',
