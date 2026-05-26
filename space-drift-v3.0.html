@@ -196,7 +196,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
 </div>
 
 <div id="mhint">MOVE MOUSE TO STEER · CLICK TO THRUST</div>
-<div id="ver">38</div>
+<div id="ver">39</div>
 <div id="toast"></div>
 
 
@@ -266,6 +266,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;touch-action:no
     <div class="lt" id="lt" style="color:#fff">SPACE DRIFT</div>
     <div class="lsub">PHYSICS PILOT · v3.0</div>
     <div class="tr" id="tr"></div>
+    <div style="margin-bottom:4px;pointer-events:all;"><button class="btns" id="gauge-btn" onclick="toggleGauge()">GAUGE: LEFT</button></div>
     <div class="brow">
       <div class="bri"><div class="brv" id="hbest">0</div><div class="brl">Best</div></div>
       <div class="bri"><div class="brv" id="hgames">0</div><div class="brl">Games</div></div>
@@ -395,6 +396,7 @@ const TH = {
 };
 
 let AK = localStorage.getItem('sd_theme') || 'cartoon';
+let gaugeSide = localStorage.getItem('sd_gauge') || 'left';
 let T = TH[AK] || TH.scifi;
 
 // ── CANVAS ──────────────────────────────────
@@ -800,6 +802,11 @@ function applyTheme() {
   document.querySelectorAll('.hv').forEach(el => el.style.color = T.ha);
   document.querySelectorAll('.td').forEach(d => d.classList.toggle('on', d.dataset.k === AK));
 }
+function toggleGauge() {
+  gaugeSide = gaugeSide === 'left' ? 'right' : 'left';
+  localStorage.setItem('sd_gauge', gaugeSide);
+  document.getElementById('gauge-btn').textContent = 'GAUGE: ' + gaugeSide.toUpperCase();
+}
 function buildThemeSel() {
   const row = document.getElementById('tr'); row.innerHTML = '';
   Object.entries(TH).forEach(([k,v]) => {
@@ -943,7 +950,7 @@ function drawParallax(c, camY) {
     const screenY=wz*(H+sRad*2.5)-sRad*.8;
     if(screenY>-sRad*2.2&&screenY<H+sRad*2.2){
       const fade=Math.min(1,wz<.14?wz/.14:wz>.86?(1-wz)/.14:1);
-      c.save(); c.globalAlpha=fade*.9;
+      c.save(); c.globalAlpha=fade*.52;
       _drawSolarPlanet(c,sp.x*W,screenY,zoneIdx,sRad,sp.phase);
       c.restore();
     }
@@ -1183,6 +1190,17 @@ function _drawSolarPlanet(c,x,y,idx,rad,phase){
     c.strokeStyle='rgba(115,195,208,.44)'; c.lineWidth=rad*.09;
     c.beginPath(); c.arc(0,0,rad*1.65,0,Math.PI); c.stroke(); c.restore();
   }
+  // dashed orbit ring — visual cue: background object, no collision
+  const orR = rad * (idx===4||idx===5 ? 3.2 : 2.2);
+  c.save(); c.globalAlpha=oa*.3; c.strokeStyle='rgba(180,210,255,0.55)';
+  c.lineWidth=0.9; c.setLineDash([4,9]);
+  c.beginPath(); c.arc(0,0,orR,0,Math.PI*2); c.stroke();
+  c.setLineDash([]); c.restore();
+  // planet name label
+  const PNAMES=['Mercury','Venus','Earth','Mars','Jupiter','Saturn','Uranus','Neptune'];
+  c.save(); c.globalAlpha=oa*.38; c.fillStyle='#b8d4ff';
+  c.font='8px "Orbitron",monospace'; c.textAlign='center';
+  c.fillText(PNAMES[idx]||'', 0, rad+14); c.restore();
 }
 
 // ── DRAW SKY & STARS ─────────────────────────
@@ -1469,7 +1487,7 @@ function update() {
         if (Math.hypot(dx,dy)<o.r+R-5) {
           if (S.shields>0) { S.shields--; o.alive=0; boom(o.x,sy,T.dc); }
           else if (G.hitGrace<=0) {
-            const dmg=o.danger?Math.round(8+o.r*1.4):Math.round(4+o.r*0.85);
+            const dmg=o.danger?Math.round(5+o.r*0.7):Math.round(2+o.r*0.25);
             G.armor=Math.max(0,G.armor-dmg);
             o.alive=0; G.hitGrace=52;
             boom(o.x,sy,T.dc);
@@ -1826,7 +1844,7 @@ function draw() {
   // ── Armor gauge (top-semicircle, bottom-right) ──
   if (G && G.gravOn) {
     const ap = Math.max(0, G.armor) / 100;
-    const gx = W-58, gy = H-18, gr = 34;
+    const gx = gaugeSide==='left' ? 58 : W-58, gy = H-18, gr = 34;
     ctx.save();
     ctx.lineCap = 'round'; ctx.lineWidth = 5;
     ctx.strokeStyle = 'rgba(255,255,255,.1)';
@@ -2380,6 +2398,7 @@ function homeLoop() {
 // ── INIT ─────────────────────────────────────
 localStorage.setItem('sd_ads_off','1');
 buildThemeSel(); applyTheme(); applyAdsPref(); loadStats(); homeOn=true; homeLoop();
+document.getElementById('gauge-btn').textContent = 'GAUGE: ' + gaugeSide.toUpperCase();
 setTiltGate(false);
 </script>
 </body>
