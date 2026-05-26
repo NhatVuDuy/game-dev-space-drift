@@ -1,0 +1,17 @@
+{
+  "appId": "com.spacedrift.game",
+  "appName": "Space Drift",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "Dark",
+      "backgroundColor": "#0a0a1a"
+    },
+    "ScreenOrientation": {
+      "default": "portrait"
+    }
+  }
+}
