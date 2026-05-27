@@ -138,7 +138,13 @@ function setTiltGate(ready) {
 }
 
 let AC = null;
-function initAudio() { try { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
+let thrusterNode = null;
+function initAudio() {
+  try {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+  } catch(e) {}
+}
 function sfx(type) {
   if (!AC) return;
   try {
@@ -148,11 +154,38 @@ function sfx(type) {
     if (type==='gem') { o.frequency.setValueAtTime(880,t); o.frequency.exponentialRampToValueAtTime(1320,t+.12); g.gain.setValueAtTime(.13,t); g.gain.exponentialRampToValueAtTime(.001,t+.2); o.start(t); o.stop(t+.2); }
     else if (type==='fuel') { o.frequency.setValueAtTime(440,t); o.frequency.exponentialRampToValueAtTime(660,t+.1); g.gain.setValueAtTime(.1,t); g.gain.exponentialRampToValueAtTime(.001,t+.2); o.start(t); o.stop(t+.2); }
     else if (type==='boom') { o.type='sawtooth'; o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(28,t+.45); g.gain.setValueAtTime(.24,t); g.gain.exponentialRampToValueAtTime(.001,t+.5); o.start(t); o.stop(t+.5); }
+    else if (type==='hit')  { o.type='sawtooth'; o.frequency.setValueAtTime(190,t); o.frequency.exponentialRampToValueAtTime(55,t+.13); g.gain.setValueAtTime(.18,t); g.gain.exponentialRampToValueAtTime(.001,t+.15); o.start(t); o.stop(t+.16); }
     else if (type==='gate') { [523,659,784].forEach((f,i)=>{ const oi=AC.createOscillator(),gi=AC.createGain(); oi.connect(gi); gi.connect(AC.destination); oi.frequency.value=f; gi.gain.setValueAtTime(.13,t+i*.09); gi.gain.exponentialRampToValueAtTime(.001,t+i*.09+.22); oi.start(t+i*.09); oi.stop(t+i*.09+.25); }); }
     else if (type==='stage') { [523,659,784,1047].forEach((f,i)=>{ const oi=AC.createOscillator(),gi=AC.createGain(); oi.connect(gi); gi.connect(AC.destination); oi.frequency.value=f; gi.gain.setValueAtTime(.16,t+i*.11); gi.gain.exponentialRampToValueAtTime(.001,t+i*.11+.28); oi.start(t+i*.11); oi.stop(t+i*.11+.32); }); }
     else if (type==='land') { o.frequency.setValueAtTime(220,t); g.gain.setValueAtTime(.14,t); g.gain.exponentialRampToValueAtTime(.001,t+.3); o.start(t); o.stop(t+.3); }
     else if (type==='warp') { o.type='sawtooth'; o.frequency.setValueAtTime(660,t); o.frequency.exponentialRampToValueAtTime(35,t+.8); g.gain.setValueAtTime(.22,t); g.gain.exponentialRampToValueAtTime(.001,t+.9); o.start(t); o.stop(t+.95); }
   } catch(e) {}
+}
+function startThruster() {
+  if (!AC || thrusterNode) return;
+  try {
+    const osc = AC.createOscillator(), gain = AC.createGain();
+    const lfo = AC.createOscillator(), lfoG = AC.createGain();
+    osc.type = 'sawtooth'; osc.frequency.value = 78;
+    lfo.frequency.value = 10; lfoG.gain.value = 0.048;
+    lfo.connect(lfoG); lfoG.connect(gain.gain);
+    const t = AC.currentTime;
+    gain.gain.setValueAtTime(0.001, t); gain.gain.exponentialRampToValueAtTime(0.10, t + 0.08);
+    osc.connect(gain); gain.connect(AC.destination);
+    lfo.start(t); osc.start(t);
+    thrusterNode = { osc, lfo, gain };
+  } catch(e) {}
+}
+function stopThruster() {
+  if (!thrusterNode || !AC) return;
+  try {
+    const { osc, lfo, gain } = thrusterNode;
+    const t = AC.currentTime;
+    gain.gain.cancelScheduledValues(t); gain.gain.setValueAtTime(gain.gain.value, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.10);
+    osc.stop(t + 0.11); lfo.stop(t + 0.11);
+  } catch(e) {}
+  thrusterNode = null;
 }
 function cinematicLaunchAudio(intensity) {
   if (!AC) return;
@@ -291,6 +324,7 @@ function showScr(id) {
 }
 function goHome() {
   cancelAnimationFrame(raf); cancelAnimationFrame(overlayRaf);
+  stopThruster();
   G = null; hcv.style.display = 'block';
   homeOn = true; applyTheme(); loadStats(); showScr('sh'); homeLoop();
 }
@@ -700,7 +734,7 @@ async function startGame() {
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
     landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false, exploding:false,
-    hitGrace:0, armor:100,
+    hitGrace:0, armor:100, noFuelPeak:null,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -751,8 +785,12 @@ function update() {
   if (!isMob) { tx=(mouseX-.5)*2; if(K.ArrowLeft||K.a)tx=-1; if(K.ArrowRight||K.d)tx=1; }
   else { tx=btnX!==0?btnX:gyroX; if(K.ArrowLeft)tx=-1; if(K.ArrowRight)tx=1; }
   const thrInput = thrusting || clicking || K.ArrowUp || K.w || K[' '];
-  const thrustEdge = thrInput && !G.thrustPrev;
+  const thrustEdge    = thrInput && !G.thrustPrev;
+  const thrustRelease = !thrInput && G.thrustPrev;
   G.thrustPrev = thrInput;
+
+  if (thrustEdge && G.firstThrust && !G.refueling && G.ship.fuel > 0) startThruster();
+  if (thrustRelease) stopThruster();
 
   if (G.refueling) {
     if (G.refuelPad) { S.x += (G.refuelPad.x - S.x) * 0.22; S.wy = G.refuelPad.wy + G.refuelPad.h + R + 0.8; }
@@ -814,6 +852,17 @@ function update() {
   const tc = S.wy - H*.44; G.cam += (tc-G.cam)*.09; if(G.cam<0) G.cam=0;
   if (S.wy > G.lastGen-700) genWorld(G.lastGen+2000);
 
+  if (G.gravOn && !G.refueling) {
+    if (S.fuel <= 0) {
+      stopThruster();
+      if (G.noFuelPeak === null) G.noFuelPeak = S.wy;
+      else G.noFuelPeak = Math.max(G.noFuelPeak, S.wy);
+      if (G.noFuelPeak - S.wy > H) { doCrash(); return; }
+    } else {
+      G.noFuelPeak = null;
+    }
+  }
+
   const skipCollision = G.warpGraceTick > G.tick;
   for (let i=G.objs.length-1; i>=0; i--) {
     const o = G.objs[i]; const sy = w2s(o.wy);
@@ -836,11 +885,11 @@ function update() {
       if (G.gravOn && !G.refueling && !skipCollision) {
         const dx=S.x-o.x, dy=w2s(S.wy)-sy;
         if (Math.hypot(dx,dy)<o.r+R-5) {
-          if (S.shields>0) { S.shields--; o.alive=0; boom(o.x,sy,T.dc); }
+          if (S.shields>0) { S.shields--; o.alive=0; boom(o.x,sy,T.dc); sfx('hit'); }
           else if (G.hitGrace<=0) {
             const dmg=o.danger?Math.round(5+o.r*0.7):Math.round(2+o.r*0.25);
             G.armor=Math.max(0,G.armor-dmg); o.alive=0; G.hitGrace=52;
-            boom(o.x,sy,T.dc); popTxt(o.x,sy-18,'-'+dmg,'#ff8844',14,.02);
+            boom(o.x,sy,T.dc); sfx('hit'); popTxt(o.x,sy-18,'-'+dmg,'#ff8844',14,.02);
             if(G.armor<=0){doCrash();return;}
           }
         }
@@ -852,11 +901,11 @@ function update() {
       if (o.bolts.length < 5 && sy > -40 && sy < H + 40 && Math.random() < .35) spawnWallBolt(o);
       if (!G.gravOn || G.refueling || skipCollision) continue;
       const ssy=w2s(S.wy);
-      if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);}else{doCrash();return;} }
+      if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);sfx('hit');}else{doCrash();return;} }
     }
     else if (o.t==='fuel' && o.alive) {
       o.p+=.08;
-      if (Math.hypot(S.x-o.x, w2s(S.wy)-sy)<o.r+R+4) { S.fuel=Math.min(CFG.FMAX,S.fuel+CFG.FADD); o.alive=0; popTxt(o.x,sy,'⛽ +FUEL',T.fc); sfx('fuel'); }
+      if (Math.hypot(S.x-o.x, w2s(S.wy)-sy)<o.r+R+4) { S.fuel=Math.min(CFG.FMAX,S.fuel+CFG.FADD); o.alive=0; G.noFuelPeak=null; popTxt(o.x,sy,'⛽ +FUEL',T.fc); sfx('fuel'); }
     }
     else if (o.t==='gem' && o.alive) {
       o.p+=.10;
@@ -972,7 +1021,7 @@ function rfLaunch() {
 
 function doCrash() {
   if (!G.ship.alive) return;
-  G.ship.alive = false; G.exploding = true; sfx('boom');
+  G.ship.alive = false; G.exploding = true; stopThruster(); sfx('boom');
   cancelAnimationFrame(raf);
   const sx = G.ship.x, sy = w2s(G.ship.wy);
   for (let i = 0; i < 26; i++) {
@@ -1518,7 +1567,7 @@ function rr(c,x,y,w,h,r) {
 }
 
 function doLanding() {
-  cancelAnimationFrame(raf); sfx('land');
+  cancelAnimationFrame(raf); stopThruster(); sfx('land');
   const sx=G.ship.x,sy=w2s(G.ship.wy);
   for(let i=0;i<28;i++){const a=Math.random()*6.28,s=1.5+Math.random()*3.8;G.parts.push({x:sx+(Math.random()-.5)*45,y:sy-Math.random()*45,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,life:1,r:4+Math.random()*9,col:[T.ha,T.bc,T.fc,T.gc][0|Math.random()*4]});}
   let f=0;(function cel(){draw();if(++f<70)requestAnimationFrame(cel);else endGame(true);})();
