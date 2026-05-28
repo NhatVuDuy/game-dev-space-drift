@@ -1,6 +1,6 @@
 import { CFG, TH, SR } from './config.js';
 import { aC, phash, rr } from './utils.js';
-import { initAudio, sfx, cinematicLaunchAudio } from './audio.js';
+import { initAudio, sfx, cinematicLaunchAudio, startThruster, stopThruster } from './audio.js';
 let AK = localStorage.getItem('sd_theme') || 'cartoon';
 let gaugeSide = localStorage.getItem('sd_gauge') || 'left';
 let T = TH[AK] || TH.scifi;
@@ -299,6 +299,7 @@ function showScr(id) {
 }
 function goHome() {
   cancelAnimationFrame(raf); cancelAnimationFrame(overlayRaf);
+  stopThruster();
   G = null; hcv.style.display = 'block';
   homeOn = true; applyTheme(); loadStats(); showScr('sh'); homeLoop();
 }
@@ -860,7 +861,7 @@ async function startGame() {
     bhFlash:0, bhWarping:false, bhNear:0, bhNearFwd:false, bhFlashFwd:false,
     bhWarpPhase:null, bhWarpScale:1, bhWarpTarget:null, warpGraceTick:0, launchMistTick:0,
     landMistTick:0, landMistPad:null, launchCharge:0, thrustPrev:false, bhCrashShrink:false, exploding:false,
-    hitGrace:0, armor:100,
+    hitGrace:0, armor:100, noFuelPeak:null,
   };
   G.objs.push({t:'ground', wy:0});
   G.objs.push({t:'launchpad', wy:G.padWY, x:W/2, w:W*.55, h:10});
@@ -923,8 +924,13 @@ function update() {
   if (!isMob) { tx=(mouseX-.5)*2; if(K.ArrowLeft||K.a)tx=-1; if(K.ArrowRight||K.d)tx=1; }
   else { tx=btnX!==0?btnX:gyroX; if(K.ArrowLeft)tx=-1; if(K.ArrowRight)tx=1; }
   const thrInput = thrusting || clicking || K.ArrowUp || K.w || K[' '];
-  const thrustEdge = thrInput && !G.thrustPrev;
+  const thrustEdge    = thrInput && !G.thrustPrev;
+  const thrustRelease = !thrInput && G.thrustPrev;
   G.thrustPrev = thrInput;
+
+  // Thruster audio — start on edge-up (flying only), stop on release
+  if (thrustEdge && G.firstThrust && !G.refueling && G.ship.fuel > 0) startThruster();
+  if (thrustRelease) stopThruster();
 
   if (G.refueling) {
     if (G.refuelPad) {
@@ -1012,6 +1018,18 @@ function update() {
   const tc = S.wy - H*.44; G.cam += (tc-G.cam)*.09; if(G.cam<0) G.cam=0;
   if (S.wy > G.lastGen-700) genWorld(G.lastGen+2000);
 
+  // Fall-without-fuel mechanic: crash if fell 1 screen height with empty tank
+  if (G.gravOn && !G.refueling) {
+    if (S.fuel <= 0) {
+      stopThruster();
+      if (G.noFuelPeak === null) G.noFuelPeak = S.wy;
+      else G.noFuelPeak = Math.max(G.noFuelPeak, S.wy);
+      if (G.noFuelPeak - S.wy > H) { doCrash(); return; }
+    } else {
+      G.noFuelPeak = null;
+    }
+  }
+
   const skipCollision = G.warpGraceTick > G.tick;
   for (let i=G.objs.length-1; i>=0; i--) {
     const o = G.objs[i]; const sy = w2s(o.wy);
@@ -1035,12 +1053,12 @@ function update() {
       if (G.gravOn && !G.refueling && !skipCollision) {
         const dx=S.x-o.x, dy=w2s(S.wy)-sy;
         if (Math.hypot(dx,dy)<o.r+R-5) {
-          if (S.shields>0) { S.shields--; o.alive=0; boom(o.x,sy,T.dc); }
+          if (S.shields>0) { S.shields--; o.alive=0; boom(o.x,sy,T.dc); sfx('hit'); }
           else if (G.hitGrace<=0) {
             const dmg=o.danger?Math.round(5+o.r*0.7):Math.round(2+o.r*0.25);
             G.armor=Math.max(0,G.armor-dmg);
             o.alive=0; G.hitGrace=52;
-            boom(o.x,sy,T.dc);
+            boom(o.x,sy,T.dc); sfx('hit');
             popTxt(o.x,sy-18,'-'+dmg,'#ff8844',14,.02);
             if(G.armor<=0){doCrash();return;}
           }
@@ -1054,11 +1072,11 @@ function update() {
       if (o.bolts.length < 5 && sy > -40 && sy < H + 40 && Math.random() < .35) spawnWallBolt(o);
       if (!G.gravOn || G.refueling || skipCollision) continue;
       const ssy=w2s(S.wy);
-      if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);}else{doCrash();return;} }
+      if (ssy<sy+o.h+R && ssy>sy-R && !(S.x>=o.gx&&S.x<=o.gx+o.gw)) { if(S.shields>0){S.shields--;o.alive=0;boom(S.x,sy,T.dc);sfx('hit');}else{doCrash();return;} }
     }
     else if (o.t==='fuel' && o.alive) {
       o.p+=.08;
-      if (Math.hypot(S.x-o.x, w2s(S.wy)-sy)<o.r+R+4) { S.fuel=Math.min(CFG.FMAX,S.fuel+CFG.FADD); o.alive=0; popTxt(o.x,sy,'⛽ +FUEL',T.fc); sfx('fuel'); }
+      if (Math.hypot(S.x-o.x, w2s(S.wy)-sy)<o.r+R+4) { S.fuel=Math.min(CFG.FMAX,S.fuel+CFG.FADD); o.alive=0; G.noFuelPeak=null; popTxt(o.x,sy,'⛽ +FUEL',T.fc); sfx('fuel'); }
     }
     else if (o.t==='gem' && o.alive) {
       o.p+=.10;
@@ -1216,6 +1234,7 @@ function doCrash() {
   if (!G.ship.alive) return;
   G.ship.alive = false;
   G.exploding = true;
+  stopThruster();
   sfx('boom');
   cancelAnimationFrame(raf);
   const sx = G.ship.x, sy = w2s(G.ship.wy);
@@ -1903,7 +1922,7 @@ function drawShip() {
 
 // ── LANDING ──────────────────────────────────
 function doLanding() {
-  cancelAnimationFrame(raf); sfx('land');
+  cancelAnimationFrame(raf); stopThruster(); sfx('land');
   const sx=G.ship.x,sy=w2s(G.ship.wy);
   for(let i=0;i<28;i++){const a=Math.random()*6.28,s=1.5+Math.random()*3.8;G.parts.push({x:sx+(Math.random()-.5)*45,y:sy-Math.random()*45,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,life:1,r:4+Math.random()*9,col:[T.ha,T.bc,T.fc,T.gc][0|Math.random()*4]});}
   let f=0;(function cel(){draw();if(++f<70)requestAnimationFrame(cel);else endGame(true);})();
@@ -1980,7 +1999,7 @@ document.getElementById('gauge-btn').textContent = 'GAUGE: ' + gaugeSide.toUpper
 setTiltGate(false);
 
 // ── INIT ─────────────────────────────────────
-try { document.getElementById('ver').textContent = 'v4 · ' + __BUILD__; } catch(e) {}
+try { document.getElementById('ver').textContent = __BUILD__; } catch(e) {}
 
 // Expose functions called from inline onclick handlers
 Object.assign(window, {

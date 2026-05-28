@@ -46,7 +46,7 @@ function injectMockWindow(ac) {
 // Since Node.js caches modules, we test the exported functions directly with
 // a fresh mock injected before initAudio() is called.
 
-import { initAudio, sfx, cinematicLaunchAudio } from '../src/audio.js';
+import { initAudio, sfx, cinematicLaunchAudio, startThruster, stopThruster } from '../src/audio.js';
 
 // ── Tests ─────────────────────────────────────────────────
 
@@ -89,6 +89,12 @@ for (const type of SFX_TYPES) {
 
 ok('sfx(unknown type) → no throw', (() => { try { sfx('nonexistent'); return true; } catch(e) { return false; } })());
 
+// hit sound
+mockAC._log.length = 0; mockAC._oscs.length = 0;
+sfx('hit');
+ok("sfx('hit') → sawtooth waveform", mockAC._oscs[0]?.type === 'sawtooth');
+ok("sfx('hit') → creates osc+gain", mockAC._log.includes('createOscillator') && mockAC._log.includes('createGain'));
+
 // Check specific waveform types
 mockAC._log.length = 0; mockAC._oscs.length = 0;
 sfx('boom');
@@ -130,6 +136,17 @@ ok('intensity clamped — still 6 oscillators at high value', mockAC._oscs.lengt
 
 cinematicLaunchAudio(); // no argument
 ok('cinematicLaunchAudio() → no throw without args', true);
+
+console.log('\nstartThruster() / stopThruster()');
+
+mockAC._log.length = 0; mockAC._oscs.length = 0;
+startThruster();
+ok('startThruster() → creates oscillator+lfo+gain', mockAC._oscs.length === 2); // osc + lfo
+ok('startThruster() → is idempotent (second call ignored)', (() => { const n = mockAC._oscs.length; startThruster(); return mockAC._oscs.length === n; })());
+stopThruster();
+ok('stopThruster() → no throw', true);
+stopThruster(); // second call should be no-op
+ok('stopThruster() idempotent (double-stop no throw)', true);
 
 // ── Summary ──────────────────────────────────────────────
 console.log(`\n${'─'.repeat(40)}`);

@@ -2,8 +2,9 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'child_process';
 
-const gitHash = (() => { try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch(e) { return '000000'; } })();
-const buildNum = new Date().toISOString().slice(0,10).replace(/-/g,'') + '.' + gitHash;
+const commitCount = (() => { try { return execSync('git rev-list --count HEAD').toString().trim().padStart(3, '0'); } catch(e) { return '000'; } })();
+const buildDate = new Date().toISOString().slice(0,10).replace(/-/g,'');
+const buildNum = 'v4-' + commitCount + '-' + buildDate;
 
 export default defineConfig({
   define: { __BUILD__: JSON.stringify(buildNum) },

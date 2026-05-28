@@ -2,10 +2,13 @@
 // AC (AudioContext) is private to this module.
 
 let AC = null;
+let thrusterNode = null; // { osc, lfo, gain } — lives while thrust is held
 
 export function initAudio() {
   try {
     if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    // Resume if browser suspended it (autoplay policy)
+    if (AC.state === 'suspended') AC.resume();
   } catch(e) {}
 }
 
@@ -18,11 +21,56 @@ export function sfx(type) {
     if (type==='gem')   { o.frequency.setValueAtTime(880,t); o.frequency.exponentialRampToValueAtTime(1320,t+.12); g.gain.setValueAtTime(.13,t); g.gain.exponentialRampToValueAtTime(.001,t+.2); o.start(t); o.stop(t+.2); }
     else if (type==='fuel')  { o.frequency.setValueAtTime(440,t); o.frequency.exponentialRampToValueAtTime(660,t+.1); g.gain.setValueAtTime(.1,t); g.gain.exponentialRampToValueAtTime(.001,t+.2); o.start(t); o.stop(t+.2); }
     else if (type==='boom')  { o.type='sawtooth'; o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(28,t+.45); g.gain.setValueAtTime(.24,t); g.gain.exponentialRampToValueAtTime(.001,t+.5); o.start(t); o.stop(t+.5); }
+    else if (type==='hit')   { o.type='sawtooth'; o.frequency.setValueAtTime(190,t); o.frequency.exponentialRampToValueAtTime(55,t+.13); g.gain.setValueAtTime(.18,t); g.gain.exponentialRampToValueAtTime(.001,t+.15); o.start(t); o.stop(t+.16); }
     else if (type==='gate')  { [523,659,784].forEach((f,i)=>{ const oi=AC.createOscillator(),gi=AC.createGain(); oi.connect(gi); gi.connect(AC.destination); oi.frequency.value=f; gi.gain.setValueAtTime(.13,t+i*.09); gi.gain.exponentialRampToValueAtTime(.001,t+i*.09+.22); oi.start(t+i*.09); oi.stop(t+i*.09+.25); }); }
     else if (type==='stage') { [523,659,784,1047].forEach((f,i)=>{ const oi=AC.createOscillator(),gi=AC.createGain(); oi.connect(gi); gi.connect(AC.destination); oi.frequency.value=f; gi.gain.setValueAtTime(.16,t+i*.11); gi.gain.exponentialRampToValueAtTime(.001,t+i*.11+.28); oi.start(t+i*.11); oi.stop(t+i*.11+.32); }); }
     else if (type==='land')  { o.frequency.setValueAtTime(220,t); g.gain.setValueAtTime(.14,t); g.gain.exponentialRampToValueAtTime(.001,t+.3); o.start(t); o.stop(t+.3); }
     else if (type==='warp')  { o.type='sawtooth'; o.frequency.setValueAtTime(660,t); o.frequency.exponentialRampToValueAtTime(35,t+.8); g.gain.setValueAtTime(.22,t); g.gain.exponentialRampToValueAtTime(.001,t+.9); o.start(t); o.stop(t+.95); }
   } catch(e) {}
+}
+
+// Continuous thruster sound — sawtooth rumble with LFO flutter for "xẹt xẹt" effect
+export function startThruster() {
+  if (!AC || thrusterNode) return;
+  try {
+    const osc  = AC.createOscillator();
+    const gain = AC.createGain();
+    const lfo  = AC.createOscillator();
+    const lfoG = AC.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.value = 78;
+
+    lfo.frequency.value = 10;  // 10 Hz flutter → "xẹt xẹt" texture
+    lfoG.gain.value = 0.048;
+    lfo.connect(lfoG);
+    lfoG.connect(gain.gain);
+
+    const t = AC.currentTime;
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.exponentialRampToValueAtTime(0.10, t + 0.08);
+
+    osc.connect(gain);
+    gain.connect(AC.destination);
+
+    lfo.start(t);
+    osc.start(t);
+    thrusterNode = { osc, lfo, gain };
+  } catch(e) {}
+}
+
+export function stopThruster() {
+  if (!thrusterNode || !AC) return;
+  try {
+    const { osc, lfo, gain } = thrusterNode;
+    const t = AC.currentTime;
+    gain.gain.cancelScheduledValues(t);
+    gain.gain.setValueAtTime(gain.gain.value, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.10);
+    osc.stop(t + 0.11);
+    lfo.stop(t + 0.11);
+  } catch(e) {}
+  thrusterNode = null;
 }
 
 export function cinematicLaunchAudio(intensity) {
